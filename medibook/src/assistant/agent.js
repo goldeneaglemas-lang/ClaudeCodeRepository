@@ -32,7 +32,16 @@ const VOICE_RULES = `You are answering a PHONE CALL to the clinic. Everything yo
 - If the caller asks for a person, is upset, or you cannot help, use transfer_to_front_desk (when available) after a short sentence saying you will connect them.
 - When the caller has nothing more to ask, say a brief goodbye and use end_call.`;
 
-export function buildSystemPrompt(clinic, doctors, now = new Date(), { channel = 'chat', callerPhone = '', canTransfer = false } = {}) {
+const LANGUAGE_NAMES = { 'en-IN': 'English', 'ta-IN': 'Tamil', 'en-US': 'English' };
+
+const TAMIL_RULES = `Tamil on the phone:
+- Callers may speak Tamil, English, or a mix of both. Always reply in the language of the caller's latest message; if they mix, reply in Tamil with the same everyday English words they used.
+- Use simple, polite, everyday spoken Tamil as people talk in Tamil Nadu (for example "சொல்லுங்க", "சரி", "கண்டிப்பா"), not formal written Tamil. Address the caller respectfully (நீங்க / உங்க).
+- Write Tamil in Tamil script. Keep words people normally say in English, such as appointment, doctor, OK, token, in English.
+- Write times and dates in Tamil words the way people say them, for example "வியாழக்கிழமை காலை பத்தரை மணிக்கு" or "சாயங்காலம் நாலு மணிக்கு". Do not write digits for times.
+- Read confirmation codes and phone numbers as English letters and digits separated by spaces, for example "K 7 M 2 Q 9".`;
+
+export function buildSystemPrompt(clinic, doctors, now = new Date(), { channel = 'chat', callerPhone = '', canTransfer = false, languages = [] } = {}) {
   const doctorLines = doctors
     .map((d) => `- id ${d.id}: ${d.name}${d.specialty ? ` (${d.specialty})` : ''}, ${d.slot_minutes}-minute appointments`)
     .join('\n');
@@ -53,6 +62,13 @@ export function buildSystemPrompt(clinic, doctors, now = new Date(), { channel =
       type: 'text',
       text: `${VOICE_RULES}\n${canTransfer ? 'Transfer to the front desk is available.' : 'Transfer to a person is not available; give the front desk phone number instead.'}`,
     });
+    if (languages.length) {
+      const names = languages.map((c) => LANGUAGE_NAMES[c] ?? c);
+      blocks.push({
+        type: 'text',
+        text: `This phone line speaks ${names.join(' and ')}.${languages.includes('ta-IN') ? `\n${TAMIL_RULES}` : ''}`,
+      });
+    }
   }
   blocks.push({ type: 'text', text: clinicInfo });
   if (channel === 'voice' && callerPhone) {
@@ -77,11 +93,11 @@ function textOf(content) {
  */
 export async function runAssistantTurn({
   client, model = DEFAULT_MODEL, store, scheduler, clinic, history, userText, now = new Date(),
-  channel = 'chat', callerPhone = '',
+  channel = 'chat', callerPhone = '', languages = [],
 }) {
   const messages = [...history, { role: 'user', content: userText }];
   const canTransfer = channel === 'voice' && Boolean(clinic.transfer_number);
-  const system = buildSystemPrompt(clinic, store.listDoctors(clinic.id), now, { channel, callerPhone, canTransfer });
+  const system = buildSystemPrompt(clinic, store.listDoctors(clinic.id), now, { channel, callerPhone, canTransfer, languages });
   const tools = channel === 'voice'
     ? [...TOOLS, ...VOICE_CONTROL_TOOLS.filter((t) => canTransfer || t.name !== 'transfer_to_front_desk')]
     : TOOLS;

@@ -125,3 +125,8 @@ pre.snippet { background: var(--surface-2); padding: .8rem; border-radius: 10px;
 .hero h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); }
 .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
 .features .card h3 { font-size: 1rem; }
+
+/* ---------- test call ---------- */
+.meter { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin-top: .3rem; }
+.meter > div { height: 100%; width: 0; background: var(--accent); transition: width .1s linear; }
+.row-end { flex: 0 0 auto; }

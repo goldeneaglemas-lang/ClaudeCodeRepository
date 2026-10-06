@@ -250,9 +250,18 @@
   });
 
   // ---------- phone calls ----------
-  const OUTCOMES = { booked: 'Booked', transferred: 'Transferred', completed: 'Completed', no_input: 'No response', '': 'In progress' };
+  const OUTCOMES = {
+    booked: 'Booked', transferred: 'Transferred', completed: 'Completed', no_input: 'No response',
+    hung_up: 'Caller hung up', error: 'Error', '': 'In progress',
+  };
 
   async function loadCalls() {
+    $('c-test').href = `/static/phone-test.html?clinic=${encodeURIComponent(clinic.slug)}`;
+    call('/voice-status').then((v) => {
+      const missing = [!v.ai && 'ANTHROPIC_API_KEY', !v.speech && 'SARVAM_API_KEY'].filter(Boolean);
+      $('c-test-note').textContent = missing.length ? `Test calls need ${missing.join(' and ')} set on the server.` : '';
+      $('c-test-note').classList.toggle('hidden', !missing.length);
+    }).catch(() => {});
     try {
       const calls = await call('/calls');
       const tbody = $('c-rows');
@@ -273,7 +282,15 @@
         outcome.appendChild(badge);
         const act = document.createElement('td');
         act.appendChild(button('Transcript', 'secondary', () => showTranscript(c)));
-        tr.append(cell(when), cell(c.from_number || 'Unknown'), cell(len), cell(c.turns), outcome, act);
+        const lang = { 'ta-IN': 'Tamil', 'en-IN': 'English' }[c.language] ?? '';
+        const caller = cell(c.from_number || 'Unknown');
+        if (c.provider === 'test' || lang) {
+          const note = document.createElement('span');
+          note.className = 'muted small';
+          note.textContent = [c.provider === 'test' && 'test call', lang].filter(Boolean).join(' · ');
+          caller.append(document.createElement('br'), note);
+        }
+        tr.append(cell(when), caller, cell(len), cell(c.turns), outcome, act);
         tbody.appendChild(tr);
       }
     } catch (err) { flash(err.message, true); }
@@ -320,6 +337,12 @@
     }
     $('s-voice-lang').value = clinic.voice_language;
     $('s-voice-name').value = clinic.voice_name;
+    const ensure = (sel, value, label = value) => {
+      if (![...sel.options].some((o) => o.value === value)) sel.appendChild(new Option(label, value));
+      sel.value = value;
+    };
+    ensure($('s-voice-langs'), clinic.voice_languages);
+    ensure($('s-speaker'), clinic.voice_speaker);
   }
 
   $('settings-form').addEventListener('submit', async (e) => {
@@ -331,6 +354,7 @@
         booking_horizon_days: Number($('s-horizon').value), assistant_notes: $('s-notes').value,
         voice_number: $('s-voice-number').value, transfer_number: $('s-transfer').value,
         voice_language: $('s-voice-lang').value, voice_name: $('s-voice-name').value.trim(),
+        voice_languages: $('s-voice-langs').value, voice_speaker: $('s-speaker').value,
       };
       if ($('s-pass').value) body.new_password = $('s-pass').value;
       clinic = await call('/clinic', { method: 'PUT', body });

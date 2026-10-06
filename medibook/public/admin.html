@@ -94,7 +94,11 @@
 
       <section data-panel="calls" class="stack hidden">
         <div class="card">
-          <p id="c-summary" class="muted small"></p>
+          <div class="row">
+            <p id="c-summary" class="muted small"></p>
+            <div class="row-end"><a class="btn" id="c-test" target="_blank" rel="noopener">🎙️ Test call (browser)</a></div>
+          </div>
+          <p id="c-test-note" class="notice small hidden"></p>
           <div class="table-wrap">
             <table>
               <thead><tr><th>When</th><th>Caller</th><th>Length</th><th>Turns</th><th>Outcome</th><th></th></tr></thead>
@@ -144,20 +148,38 @@
           <textarea id="s-notes" rows="5" maxlength="4000"></textarea>
           <h3>Phone line (AI answers calls)</h3>
           <div class="row">
-            <div><label for="s-voice-number">Clinic phone number on Twilio</label><input id="s-voice-number" placeholder="+14155550123"></div>
-            <div><label for="s-transfer">Transfer to (front desk, for "speak to a person")</label><input id="s-transfer" placeholder="+14155550199"></div>
+            <div><label for="s-voice-number">Clinic phone number (Exotel ExoPhone, or Twilio number)</label><input id="s-voice-number" placeholder="+918047112233"></div>
+            <div><label for="s-transfer">Transfer to (front desk, for "speak to a person")</label><input id="s-transfer" placeholder="+919840012345"></div>
           </div>
           <div class="row">
-            <div><label for="s-voice-lang">Caller language</label>
-              <select id="s-voice-lang">
-                <option value="en-US">English (US)</option><option value="en-IN">English (India)</option>
-                <option value="en-GB">English (UK)</option><option value="en-AU">English (Australia)</option>
-                <option value="hi-IN">Hindi</option><option value="es-US">Spanish (US)</option>
-                <option value="ar-AE">Arabic (UAE)</option>
+            <div><label for="s-voice-langs">Languages on calls</label>
+              <select id="s-voice-langs">
+                <option value="ta-IN,en-IN">Tamil and English (greets in Tamil)</option>
+                <option value="en-IN,ta-IN">English and Tamil (greets in English)</option>
+                <option value="ta-IN">Tamil only</option>
+                <option value="en-IN">English only</option>
               </select></div>
-            <div><label for="s-voice-name">Voice</label><input id="s-voice-name" placeholder="Polly.Joanna-Neural"></div>
+            <div><label for="s-speaker">Assistant's voice</label>
+              <select id="s-speaker">
+                <option value="kavitha">Kavitha</option><option value="priya">Priya</option><option value="kavya">Kavya</option>
+                <option value="shreya">Shreya</option><option value="ritu">Ritu</option><option value="mani">Mani</option>
+                <option value="vijay">Vijay</option><option value="gokul">Gokul</option><option value="anand">Anand</option>
+              </select></div>
           </div>
-          <p class="muted small">Leave the transfer number empty if no one can take transferred calls; the assistant will give out the front desk phone instead.</p>
+          <p class="muted small">Callers can switch between Tamil and English at any time; the assistant answers in the language they speak. Try voices with <strong>Phone calls → Test call</strong>. Leave the transfer number empty if no one can take transferred calls; the assistant will give out the front desk phone instead.</p>
+          <details>
+            <summary class="small">Twilio settings (clinics outside India)</summary>
+            <div class="row">
+              <div><label for="s-voice-lang">Twilio caller language</label>
+                <select id="s-voice-lang">
+                  <option value="en-US">English (US)</option><option value="en-IN">English (India)</option>
+                  <option value="en-GB">English (UK)</option><option value="en-AU">English (Australia)</option>
+                  <option value="hi-IN">Hindi</option><option value="es-US">Spanish (US)</option>
+                  <option value="ar-AE">Arabic (UAE)</option>
+                </select></div>
+              <div><label for="s-voice-name">Twilio voice</label><input id="s-voice-name" placeholder="Polly.Joanna-Neural"></div>
+            </div>
+          </details>
           <label for="s-pass">New password (leave blank to keep)</label><input id="s-pass" type="password" autocomplete="new-password" minlength="10">
           <p><button type="submit">Save settings</button></p>
         </form>

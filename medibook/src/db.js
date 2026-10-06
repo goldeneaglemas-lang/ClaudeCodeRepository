@@ -90,6 +90,12 @@ const ADDED_COLUMNS = {
     transfer_number: "TEXT NOT NULL DEFAULT ''", // front desk number for handing a call to a human
     voice_language: "TEXT NOT NULL DEFAULT 'en-US'",
     voice_name: "TEXT NOT NULL DEFAULT 'Polly.Joanna-Neural'",
+    voice_languages: "TEXT NOT NULL DEFAULT 'en-IN'", // phone languages (Sarvam), primary first, e.g. "ta-IN,en-IN"
+    voice_speaker: "TEXT NOT NULL DEFAULT 'kavitha'", // Sarvam voice
+  },
+  calls: {
+    provider: "TEXT NOT NULL DEFAULT 'twilio'",
+    language: "TEXT NOT NULL DEFAULT ''",
   },
 };
 
@@ -129,7 +135,7 @@ const toDoctor = (row) =>
 
 const CLINIC_PUBLIC_COLS = `id, slug, name, timezone, phone, address, emergency_number,
   assistant_notes, min_notice_minutes, booking_horizon_days,
-  voice_number, transfer_number, voice_language, voice_name`;
+  voice_number, transfer_number, voice_language, voice_name, voice_languages, voice_speaker`;
 
 export function createStore(db) {
   return {
@@ -156,13 +162,21 @@ export function createStore(db) {
       if (!number) return undefined;
       return db.prepare(`SELECT ${CLINIC_PUBLIC_COLS} FROM clinics WHERE voice_number = ?`).get(number);
     },
+    /** Match a dialled number in any format (+9180..., 080..., 80...) by its last 10 digits. */
+    getClinicByPhoneDigits(number) {
+      const digits = String(number ?? '').replace(/\D/g, '').slice(-10);
+      if (digits.length < 10) return undefined;
+      return db.prepare(
+        `SELECT ${CLINIC_PUBLIC_COLS} FROM clinics WHERE voice_number <> '' AND substr(voice_number, -10) = ?`,
+      ).get(digits);
+    },
     getClinicPasswordHash(slug) {
       return db.prepare('SELECT id, password_hash FROM clinics WHERE slug = ?').get(slug);
     },
     updateClinic(id, fields) {
       const allowed = ['name', 'timezone', 'phone', 'address', 'emergency_number', 'assistant_notes',
         'min_notice_minutes', 'booking_horizon_days', 'password_hash',
-        'voice_number', 'transfer_number', 'voice_language', 'voice_name'];
+        'voice_number', 'transfer_number', 'voice_language', 'voice_name', 'voice_languages', 'voice_speaker'];
       const keys = Object.keys(fields).filter((k) => allowed.includes(k));
       if (keys.length) {
         db.prepare(`UPDATE clinics SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`)
@@ -275,16 +289,16 @@ export function createStore(db) {
     },
 
     // --- phone calls ---
-    startCall(callSid, clinicId, fromNumber) {
-      db.prepare('INSERT OR IGNORE INTO calls (call_sid, clinic_id, from_number) VALUES (?, ?, ?)')
-        .run(callSid, clinicId, fromNumber);
+    startCall(callSid, clinicId, fromNumber, { provider = 'twilio', language = '' } = {}) {
+      db.prepare('INSERT OR IGNORE INTO calls (call_sid, clinic_id, from_number, provider, language) VALUES (?, ?, ?, ?, ?)')
+        .run(callSid, clinicId, fromNumber, provider, language);
       return this.getCall(callSid);
     },
     getCall(callSid) {
       return db.prepare('SELECT * FROM calls WHERE call_sid = ?').get(callSid);
     },
     updateCall(callSid, fields) {
-      const allowed = ['status', 'outcome', 'turns', 'silences', 'bookings', 'duration_seconds', 'ended_at'];
+      const allowed = ['status', 'outcome', 'turns', 'silences', 'bookings', 'duration_seconds', 'ended_at', 'language'];
       const keys = Object.keys(fields).filter((k) => allowed.includes(k));
       if (keys.length) {
         db.prepare(`UPDATE calls SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE call_sid = ?`)

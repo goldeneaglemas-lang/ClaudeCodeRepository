@@ -1,13 +1,14 @@
 # MediBook AI — AI appointment booking assistant for doctors
 
-MediBook AI is an AI receptionist for clinics. Patients chat or talk with it on the clinic's website, or **call the clinic's phone number**, and it books, reschedules and cancels appointments against the doctors' real schedules, around the clock. Clinic staff manage everything from a simple web dashboard.
+MediBook AI is an AI receptionist for clinics. Patients chat or talk with it on the clinic's website, or **call the clinic's phone number**, and it books, reschedules and cancels appointments against the doctors' real schedules, around the clock. Clinic staff manage everything from a simple web dashboard. Built for India: Tamil and English.
 
 All the code is in the [`medibook/`](medibook/) folder.
 
 ## Features
 
 - **AI chat assistant** (powered by Claude). Patients type in plain language, in their own language, to book, reschedule, cancel or check an appointment.
-- **AI phone line.** The AI answers calls to the clinic's number (via Twilio), talks with the caller, and books, reschedules or cancels during the call. It transfers to the front desk when asked. See [`medibook/VOICE.md`](medibook/VOICE.md).
+- **AI phone line in Tamil and English.** The AI answers calls to the clinic's number, talks with the caller in Tamil or English (mixing is fine), and books, reschedules or cancels during the call. It transfers to the front desk when asked. India: Exotel + Sarvam AI; elsewhere: Twilio. See [`medibook/VOICE.md`](medibook/VOICE.md).
+- **Website chat in Tamil and English**, with a one-tap language switch.
 - **Voice on the website.** Patients can tap the mic to speak, and replies can be read aloud.
 - **Booking form.** A simple form that works even without the AI.
 - **Website widget.** One line of code adds a "Book appointment" button to the clinic's website.
@@ -49,14 +50,14 @@ export ANTHROPIC_API_KEY=sk-ant-...      # Windows PowerShell: $env:ANTHROPIC_AP
 npm start
 ```
 
-Try a **phone call** without a phone line: keep the server running and, in a second terminal, run `cd medibook && npm run call`. You play the caller by typing.
+**Try a phone call** without a phone line: also set `SARVAM_API_KEY` (from sarvam.ai), restart, then in the dashboard open **Phone calls → Test call** and talk to the assistant in Tamil or English through your computer's microphone.
 
 Run the tests with `cd medibook && npm test`.
 
 ## More documentation
 
 - [`medibook/README.md`](medibook/README.md): configuration, adding a real clinic, deployment, code map.
-- [`medibook/VOICE.md`](medibook/VOICE.md): connecting a real phone number (Twilio) so the AI answers calls.
+- [`medibook/VOICE.md`](medibook/VOICE.md): connecting a real phone number (Exotel in India, Twilio elsewhere) so the AI answers calls.
 - [`medibook/LAUNCH.md`](medibook/LAUNCH.md): what's needed before selling (compliance, pilot, pricing, roadmap).
 
 ---

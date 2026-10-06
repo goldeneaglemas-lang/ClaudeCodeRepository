@@ -21,3 +21,12 @@ export function setup({ timezone = 'Asia/Kolkata' } = {}) {
 
 // Monday 2026-10-05 08:00 in Asia/Kolkata (UTC+5:30).
 export const MONDAY_8AM_IST = new Date('2026-10-05T02:30:00Z');
+
+/** 8 kHz 16-bit PCM test tone (a stand-in for speech). */
+export function tone(ms, amplitude = 8000, rate = 8000) {
+  const n = Math.round((rate * ms) / 1000);
+  const buf = Buffer.alloc(n * 2);
+  for (let i = 0; i < n; i++) buf.writeInt16LE(Math.round(amplitude * Math.sin((2 * Math.PI * 300 * i) / rate)), i * 2);
+  return buf;
+}
+export const silence = (ms) => tone(ms, 0);

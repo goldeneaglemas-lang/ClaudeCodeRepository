@@ -7,7 +7,8 @@ An AI receptionist for doctors and clinics. Patients chat or talk with it on the
 | Part | URL | Who uses it |
 |---|---|---|
 | AI chat assistant, with voice input and spoken replies | `/c/<clinic-id>` | Patients |
-| **AI phone line**: answers calls to the clinic's number and books during the call (Twilio). Setup guide: [VOICE.md](VOICE.md) | `/voice/*` (Twilio webhooks) | Patients who call |
+| **AI phone line** in **Tamil and English**: answers calls to the clinic's number and books during the call. India: Exotel + Sarvam AI; elsewhere: Twilio. Setup guide: [VOICE.md](VOICE.md) | `/exotel/*`, `/voice/*` | Patients who call |
+| Browser test call: talk to the phone assistant through your computer's mic | Dashboard → Phone calls → Test call | Clinic staff, you |
 | Booking form, no AI needed | `/c/<clinic-id>/book` | Patients (fallback / accessibility) |
 | Website widget, one `<script>` line | `/widget.js` | Clinic's website |
 | Clinic dashboard | `/admin` | Doctors / front desk |
@@ -56,7 +57,11 @@ Open http://localhost:3000/c/demo (patient) and http://localhost:3000/admin (cli
 
 Run the tests with `npm test`.
 
-**Try a phone call locally** without a phone line: with the server running, open a second terminal and run `npm run call`. You play the caller by typing. Real phone numbers: see [VOICE.md](VOICE.md).
+**Try a phone call without a phone line:**
+- **Speak it (Tamil/English):** set `SARVAM_API_KEY` too, then in the dashboard open **Phone calls → Test call** and talk through your mic.
+- **Type it (Twilio flow):** run `npm run call` in a second terminal.
+
+To connect real phone numbers, see [VOICE.md](VOICE.md).
 
 ### Add a real clinic
 
@@ -79,7 +84,9 @@ Then log in at `/admin`, add the doctors and their hours, and paste the snippet 
 | `MEDIBOOK_DB` | `medibook.db` | SQLite file |
 | `NOTIFY_WEBHOOK_URL` | none | Receives booking events as JSON |
 | `CHAT_RETENTION_DAYS` | `30` | Chat and call transcripts are deleted after this many days |
-| `TWILIO_AUTH_TOKEN` | none | Verifies phone webhooks come from Twilio. **Required for phone calls in production** |
+| `SARVAM_API_KEY` | none | Sarvam AI speech (Tamil/English). Turns on Exotel phone calls and dashboard test calls |
+| `EXOTEL_STREAM_TOKEN` | none | Secret that Exotel's stream URL must carry. **Required for Exotel calls in production** |
+| `TWILIO_AUTH_TOKEN` | none | Verifies phone webhooks come from Twilio. **Required for Twilio calls in production** |
 | `PUBLIC_BASE_URL` | none | Public HTTPS address as configured in Twilio, e.g. `https://book.example.com` |
 
 ## Deploying
@@ -105,7 +112,12 @@ src/
   time.js             time-zone helpers
   auth.js             password hashing, signed session cookies
   notify.js           webhook notifications
-  voice/routes.js     phone calls: Twilio webhooks, turn handling, transfer, call log
+  voice/exotel.js     phone calls in India: Exotel audio stream, turn-taking, barge-in, transfer
+  voice/sarvam.js     Sarvam AI speech-to-text / text-to-speech (Tamil, English)
+  voice/vad.js        detects when the caller starts and stops talking
+  voice/audio.js      PCM / WAV / resampling helpers
+  voice/languages.js  Tamil and English phrases, language detection
+  voice/routes.js     phone calls via Twilio: webhooks, turn handling, transfer, call log
   voice/twiml.js      TwiML builder + Twilio signature check
 public/               chat, booking form, dashboard, widget (plain HTML/JS, no build step)
 scripts/              seed, create-clinic, call-simulator (npm run call)

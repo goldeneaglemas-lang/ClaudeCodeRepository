@@ -8,6 +8,7 @@ import {
 } from './auth.js';
 import { BookingError } from './scheduling.js';
 import { WEEKDAYS, addDays, isValidDateStr, isValidTimeZone, utcToZoned, zonedToUtc } from './time.js';
+import { SUPPORTED_LANGUAGE_CODES, clinicLanguages } from './voice/languages.js';
 import { callSessionId, callTranscript, createVoiceRouter } from './voice/routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -67,7 +68,9 @@ function validateDoctorInput(body, { partial = false } = {}) {
 
 const E164_RE = /^\+[1-9]\d{6,14}$/;
 
-export function createApp({ store, scheduler, anthropic, sessionSecret, model, secureCookies = false, voice = {} }) {
+export function createApp({
+  store, scheduler, anthropic, sessionSecret, model, secureCookies = false, voice = {}, speechEnabled = false,
+}) {
   if (!sessionSecret) throw new Error('sessionSecret is required');
   const app = express();
   app.set('trust proxy', 1);
@@ -94,6 +97,14 @@ export function createApp({ store, scheduler, anthropic, sessionSecret, model, s
   // ---------- phone calls (Twilio webhooks) ----------
   app.use('/voice', createVoiceRouter({ store, scheduler, anthropic, model, ...voice }));
 
+  // Exotel "Passthru" applet placed after the Voicebot applet: 200 = go to the front desk (Connect), else hang up.
+  app.all('/exotel/next', (req, res) => {
+    const sid = String(req.query.CallSid ?? req.body?.CallSid ?? '');
+    const call = sid && store.getCall(sid);
+    if (call?.outcome === 'transferred') return res.status(200).send('transfer');
+    res.status(404).send('no transfer');
+  });
+
   // ---------- public patient API ----------
   const clinicFromSlug = (req, res, next) => {
     const clinic = store.getClinicBySlug(req.params.slug);
@@ -110,6 +121,7 @@ export function createApp({ store, scheduler, anthropic, sessionSecret, model, s
       clinic: { slug: c.slug, name: c.name, phone: c.phone, address: c.address, timezone: c.timezone, emergency_number: c.emergency_number },
       doctors: store.listDoctors(c.id).map(({ id, name, specialty, bio, slot_minutes }) => ({ id, name, specialty, bio, slot_minutes })),
       ai_enabled: Boolean(anthropic),
+      languages: clinicLanguages(c),
     });
   });
 
@@ -214,6 +226,17 @@ export function createApp({ store, scheduler, anthropic, sessionSecret, model, s
       if (!/^[a-z]{2,3}-[A-Z]{2}$/.test(b.voice_language)) throw new BookingError('INVALID', 'Voice language must look like en-US or en-IN');
       fields.voice_language = b.voice_language;
     }
+    if (b.voice_languages !== undefined) {
+      const langs = String(b.voice_languages).split(',').map((x) => x.trim()).filter(Boolean);
+      if (!langs.length || langs.some((l) => !SUPPORTED_LANGUAGE_CODES.includes(l))) {
+        throw new BookingError('INVALID', `Phone languages must be from: ${SUPPORTED_LANGUAGE_CODES.join(', ')}`);
+      }
+      fields.voice_languages = [...new Set(langs)].join(',');
+    }
+    if (b.voice_speaker !== undefined) {
+      if (!/^[a-z_]{2,40}$/.test(b.voice_speaker)) throw new BookingError('INVALID', 'Invalid voice name');
+      fields.voice_speaker = b.voice_speaker;
+    }
     if (b.voice_name !== undefined) {
       if (!/^[A-Za-z0-9._-]{1,60}$/.test(b.voice_name)) throw new BookingError('INVALID', 'Invalid voice name, e.g. Polly.Joanna-Neural');
       fields.voice_name = b.voice_name;
@@ -232,6 +255,7 @@ export function createApp({ store, scheduler, anthropic, sessionSecret, model, s
   });
 
   admin.get('/calls', (req, res) => res.json(store.listCalls(req.clinic.id)));
+  admin.get('/voice-status', (req, res) => res.json({ ai: Boolean(anthropic), speech: speechEnabled }));
   admin.get('/calls/:sid/transcript', (req, res) => {
     const call = store.getCall(req.params.sid);
     if (!call || call.clinic_id !== req.clinic.id) return res.status(404).json({ error: 'NOT_FOUND', message: 'Call not found' });

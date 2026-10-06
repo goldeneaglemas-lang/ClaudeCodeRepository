@@ -5,6 +5,8 @@ import { createStore, openDb } from './db.js';
 import { createNotifier } from './notify.js';
 import { createScheduler } from './scheduling.js';
 import { createApp } from './server.js';
+import { attachExotel } from './voice/exotel.js';
+import { createSarvamSpeech } from './voice/sarvam.js';
 
 const port = Number(process.env.PORT || 3000);
 const store = createStore(openDb());
@@ -38,9 +40,24 @@ if (!voice.authToken) {
     : 'TWILIO_AUTH_TOKEN not set; phone webhooks accept unsigned requests (development only).');
 }
 
+// Indian phone lines (Exotel + Sarvam AI speech, Tamil/English).
+const speech = process.env.SARVAM_API_KEY ? createSarvamSpeech() : null;
+if (!speech) console.warn('SARVAM_API_KEY not set; Exotel (India) phone calls and dashboard test calls are disabled.');
+const streamToken = process.env.EXOTEL_STREAM_TOKEN;
+if (speech && !streamToken) {
+  console.warn(process.env.NODE_ENV === 'production'
+    ? 'EXOTEL_STREAM_TOKEN not set; Exotel calls are refused (dashboard test calls still work).'
+    : 'EXOTEL_STREAM_TOKEN not set; Exotel stream accepts unauthenticated connections (development only).');
+}
+
 const app = createApp({
   store, scheduler, anthropic, sessionSecret, model: DEFAULT_MODEL,
   secureCookies: process.env.NODE_ENV === 'production',
   voice,
+  speechEnabled: Boolean(speech),
 });
-app.listen(port, () => console.log(`MediBook AI running on http://localhost:${port}`));
+const server = app.listen(port, () => console.log(`MediBook AI running on http://localhost:${port}`));
+attachExotel(server, {
+  store, scheduler, anthropic, model: DEFAULT_MODEL, speech, streamToken, sessionSecret,
+  requireToken: process.env.NODE_ENV === 'production',
+});

@@ -1,85 +1,127 @@
 # Phone booking: the AI answers the clinic's phone
 
-Patients call the clinic's number and talk to the AI assistant. It can book, reschedule, cancel or check an appointment during the call, using the same doctors, hours and rules as the website chat.
+Patients call the clinic and talk to the AI assistant in **Tamil or English**, or a mix of both. It can book, reschedule, cancel or check an appointment during the call, using the same doctors, hours and rules as the website.
 
-## What happens on a call
+There are two ways to connect a phone line:
+
+| | **India: Exotel + Sarvam AI** (recommended for India) | **Outside India: Twilio** |
+|---|---|---|
+| Phone numbers | Indian numbers (e.g. Chennai 044) from Exotel | Twilio numbers |
+| Languages | Tamil and English, auto-detected, Tamil-English mixing understood | One language per clinic (English etc.) |
+| Voice | Sarvam AI Indian voices (e.g. Kavitha) | Amazon Polly / Google voices via Twilio |
+| Caller can interrupt the assistant | Yes | No (takes turns) |
+| Setup | Exotel call flow + WebSocket | Twilio webhook |
+
+---
+
+## India: Exotel + Sarvam AI
+
+### How a call works
 
 ```
-Patient's phone ──► Clinic number (Twilio) ──► MediBook /voice/incoming
-                                                  │
-   "Thank you for calling Sunrise Family Clinic… emergency? dial 112… How can I help?"
-                                                  │
- Patient speaks ──► Twilio speech-to-text ──► /voice/turn ──► Claude + booking tools
-                                                  │
- Patient hears  ◄── Twilio text-to-speech ◄── reply ("Dr Sharma is free Thursday at ten…")
-                                                  │
-           …repeats until booked ──► "Your code is K 7 M 2 Q 9" ──► goodbye, hang up
+Patient dials the clinic (ExoPhone, or the clinic's old number forwarded to it)
+   │
+Exotel call flow:  [Voicebot] ──► [Passthru: /exotel/next] ──200──► [Connect: front desk]
+                       │                          └──other──► [Hangup]
+                       ▼  live audio both ways (WebSocket)
+                 MediBook /exotel/stream
+                       │
+   caller audio ─► detects when the caller stops talking ─► Sarvam speech-to-text (Tamil/English auto-detect)
+                ─► Claude + booking tools (the same engine as the chat)
+                ─► Sarvam text-to-speech (Tamil or English voice) ─► caller hears the reply
 ```
 
-**What the caller gets:**
-- They are greeted by the clinic's name, told it's an automated assistant and that the call is transcribed, and told what to do in an emergency.
-- The caller's number is offered for the booking, so they don't have to read it out.
-- Confirmation codes are read slowly, one character at a time.
-- Times are spoken naturally, for example "Thursday at half past ten".
-- If they say *"I want to talk to a person"*, or the AI can't help or has an error, the call transfers to the front desk number. If no transfer number is set, the assistant gives the front desk phone instead.
-- If the AI needs more than about 6 seconds, the caller hears *"One moment please"* rather than silence or a dropped call.
-- If nobody speaks twice, the assistant says goodbye politely and hangs up.
+**What the caller hears:**
+1. A greeting in Tamil: "வணக்கம், Sunrise Family Clinic க்கு அழைத்ததற்கு நன்றி… அவசர மருத்துவ உதவி தேவை என்றால்… 112 க்கு அழைக்கவும். நீங்கள் தமிழிலோ ஆங்கிலத்திலோ பேசலாம். உங்களுக்கு எப்படி உதவலாம்?" (Settings can make English the first language instead.)
+2. The caller speaks Tamil, English, or both mixed (*"நாளைக்கு Dr Lakshmi கிட்ட appointment வேணும்"*), and the assistant replies in the language they used.
+3. Times are said naturally, for example "வியாழக்கிழமை காலை பத்தரை மணிக்கு". It offers the caller's own number for the booking and reads the confirmation code letter by letter.
+4. **Callers can talk over the assistant** and it stops to listen.
+5. If the AI takes more than about 1.5 seconds, the caller hears "ஒரு நிமிடம் காத்திருங்கள்" / "One moment please".
+6. "I want to talk to a person", or pressing **0**, transfers the call to the front desk. Errors also go to the front desk.
+7. After two long silences, the assistant says goodbye and hangs up.
 
-**What the clinic gets:** the dashboard's **Phone calls** tab lists every call with the caller's number, length, outcome (Booked, Transferred, Completed, No response) and full transcript.
+### Try it now, without a phone line
 
-## Try it without a phone line (local)
+1. Get API keys:
+   - **Claude:** https://console.anthropic.com
+   - **Sarvam AI:** sign up at https://www.sarvam.ai and create an API key in the dashboard
+2. Start the server:
+   ```bash
+   cd medibook
+   npm run seed                      # demo clinic in Chennai, Tamil + English
+   export ANTHROPIC_API_KEY=sk-ant-...
+   export SARVAM_API_KEY=...
+   npm start
+   ```
+3. Open http://localhost:3000/admin, log in (`demo` / `demo-password-123`), go to **Phone calls → 🎙️ Test call (browser)**, press **Start call** and talk in Tamil or English.
+   - Use headphones, so the assistant doesn't hear itself.
+   - Test calls use exactly the same audio path as real phone calls, and they appear in the Phone calls tab marked "test call".
 
-```bash
-cd medibook
-npm run seed
-export ANTHROPIC_API_KEY=sk-ant-...
-npm start                  # terminal 1
-npm run call               # terminal 2: you are the caller
-```
+### Go live with a real number
 
-Type what the caller would say and press Enter. An empty line counts as silence, and Ctrl+C hangs up. The simulator sends exactly the same requests Twilio would. Options: `npm run call -- --clinic demo --from +919876543210`.
+You need the app deployed on a public **HTTPS** address, for example `https://book.yourdomain.in` (see README → Deploying).
 
-## Go live with a real phone number (about 30 minutes)
-
-You need the app deployed on a public **HTTPS** address (see README → Deploying), for example `https://book.yourdomain.com`.
-
-1. **Create a Twilio account** at https://www.twilio.com and buy a phone number with **Voice** capability in the clinic's country.
-   - Some countries, including India, ask for business documents (a "regulatory bundle") before you can buy a local number. Start this early, because approval can take days.
-   - Alternatively, the clinic can keep its existing number and **forward** calls to the Twilio number, either always or only when busy or after hours.
-2. In Twilio, open **Phone Numbers → Manage → Active numbers →** your number → **Voice configuration** and set:
-   - **A call comes in:** Webhook, `https://book.yourdomain.com/voice/incoming`, HTTP **POST**
-   - **Call status changes:** `https://book.yourdomain.com/voice/status`, HTTP **POST**
-3. Set these environment variables on your server and restart:
+1. **Exotel account.** Sign up at https://exotel.com, complete business KYC, and buy an **ExoPhone** (e.g. a Chennai 044 number).
+   - Ask Exotel support to enable the **Voicebot applet** on your account if it isn't visible.
+   - Alternatively, the clinic keeps its existing number and sets call forwarding to the ExoPhone, either always or only when busy or unanswered.
+2. **Server settings.** Set these environment variables and restart:
 
    | Variable | Value |
    |---|---|
-   | `TWILIO_AUTH_TOKEN` | From the Twilio Console home page (Account Info). Used to verify that requests really come from Twilio. |
-   | `PUBLIC_BASE_URL` | `https://book.yourdomain.com` (exactly as entered in Twilio) |
-   | `ANTHROPIC_API_KEY` | Your Claude API key |
+   | `ANTHROPIC_API_KEY` | Claude API key |
+   | `SARVAM_API_KEY` | Sarvam AI API key |
+   | `EXOTEL_STREAM_TOKEN` | A long random secret you make up (e.g. `openssl rand -hex 24`). Exotel must include it in the stream URL. |
 
-4. In the clinic dashboard, go to **Settings → Phone line** and fill in:
-   - **Clinic phone number on Twilio** in international format, e.g. `+918040001234`. This is how an incoming call is matched to the right clinic.
-   - **Transfer to:** the front desk's real number, for "speak to a person".
-   - **Caller language and voice.** Defaults that work well: `en-US` + `Polly.Joanna-Neural`, `en-IN` + `Polly.Aditi`, `en-GB` + `Polly.Amy-Neural`, `hi-IN` + `Polly.Aditi`. Other voices are listed in Twilio's text-to-speech docs.
-5. Call the number from your phone.
+3. **Call flow in Exotel** (App Bazaar → create a flow):
+   1. **Voicebot** applet, URL:
+      `wss://book.yourdomain.in/exotel/stream?clinic=<clinic-id>&token=<EXOTEL_STREAM_TOKEN>`
+      (Use 8 kHz audio, the default.)
+   2. **Passthru** applet after it, URL `https://book.yourdomain.in/exotel/next`.
+      MediBook answers **200** when the caller should be transferred.
+   3. On the Passthru's **200** branch, add a **Connect** applet that dials the front desk number. On the other branch, add **Hangup**.
+   4. Assign this flow to the ExoPhone.
+4. **Clinic dashboard.** In Settings → Phone line, set:
+   - **Clinic phone number:** the ExoPhone. With `?clinic=` in the URL this is optional, but it also lets one shared flow route by the number dialled.
+   - **Transfer to:** the front desk.
+   - **Languages on calls:** e.g. "Tamil and English".
+   - **Voice:** pick one using the Test call page.
+5. Call the number.
 
-Each clinic gets its own Twilio number; one server handles all of them. The `create-clinic` script can also set these: `--voice-number +91... --transfer +91... --language en-IN --voice Polly.Aditi`.
+Each clinic gets its own ExoPhone and flow, with its own `clinic=` value in the URL; one server handles all clinics.
 
-### Testing a local server with a real phone
+Exotel's dashboard labels change over time. If an applet name above doesn't match exactly, the pieces you need are: a bidirectional audio stream to a WebSocket (Voicebot or Stream), a step that calls a URL and branches on the response (Passthru), and a call transfer (Connect).
 
-Run `ngrok http 3000` and use the `https://….ngrok-free.app` address as `PUBLIC_BASE_URL` and in the Twilio webhooks.
+### Costs
 
-## Costs
+Approximate; confirm on each provider's pricing page.
+- **Exotel:** a monthly plan, plus per-minute call charges.
+- **Sarvam AI:** pay per use for speech-to-text (per audio minute) and text-to-speech (per character). See the pricing page on sarvam.ai.
+- **Claude:** a few cents to roughly 25 cents per booking call on the default model (see LAUNCH.md).
 
-Rough figures; check before quoting prices to clinics.
-- **Twilio:** a monthly fee for each number, plus per-minute charges for incoming calls and speech recognition. Typically a few US cents per minute in total, varying by country; see https://www.twilio.com/en-us/voice/pricing.
-- **Claude:** about the same as a chat booking, a few cents to roughly 25 cents per booking call on the default model (see LAUNCH.md).
-- A typical booking call lasts 1–3 minutes.
+A typical booking call is 1–3 minutes. Measure real costs during the pilot.
 
-## Limits and notes
+---
 
-- **One server for voice.** A call's "still thinking" state is kept in that server's memory. Run a single instance (normal for this app), or add sticky sessions if you scale out.
-- **Speech recognition can mishear** names and codes. The assistant is instructed to confirm details and ask callers to spell when unsure; check transcripts during the pilot.
-- **Turn-taking:** Twilio waits for the caller to pause, then sends what they said. Callers can't interrupt the assistant mid-sentence; this keeps the system simple and reliable. A future upgrade is streaming audio with barge-in (Twilio Media Streams with a realtime speech service).
-- **Recording:** only the text transcript is stored, not audio. It is deleted after `CHAT_RETENTION_DAYS`, 30 by default. The greeting tells callers the call is transcribed. Check local rules on call recording consent and on disclosing AI.
-- **Webhooks** without a valid Twilio signature are rejected when `TWILIO_AUTH_TOKEN` is set. In production (`NODE_ENV=production`), voice is switched off until the token is set.
+## Outside India: Twilio
+
+Twilio handles speech recognition and voice itself; MediBook answers its webhooks. One language per clinic, and callers take turns (no interrupting).
+
+1. Buy a Twilio number with Voice. In its **Voice configuration**:
+   - **A call comes in:** Webhook `https://book.yourdomain.com/voice/incoming`, HTTP **POST**
+   - **Call status changes:** `https://book.yourdomain.com/voice/status`, HTTP **POST**
+2. Set `TWILIO_AUTH_TOKEN` (Twilio Console → Account Info) and `PUBLIC_BASE_URL` (exactly the address used in Twilio) on the server.
+3. In the dashboard, set the clinic phone number, the transfer number, and under **Twilio settings** the caller language and voice (e.g. `en-US` with `Polly.Joanna-Neural`).
+4. Try it without a phone line: `npm run call` in a second terminal (you type what the caller says).
+
+---
+
+## Notes and limits
+
+- **Tamil wording:** the fixed phrases (greeting, "one moment", goodbye) are in `src/voice/languages.js`, and the assistant's Tamil style rules are in `src/assistant/agent.js`. **Have a native Tamil speaker review both before launch**, and listen to test calls.
+- **Speech recognition can mishear** names, numbers and codes on noisy lines. The assistant confirms details and asks callers to repeat when unsure. Read transcripts daily during the pilot.
+- **One server for calls.** Each live call is handled in the memory of the server it's connected to. That's fine for a single server, which is normal for this app.
+- **Privacy:** only the text transcript is stored, not audio. It is deleted after `CHAT_RETENTION_DAYS` (default 30). The greeting tells callers the call is transcribed. Under India's DPDP Act, include phone calls in your privacy notice; Sarvam AI, Exotel and Anthropic are your processors.
+- **Security:**
+  - Exotel streams without the right `EXOTEL_STREAM_TOKEN` are refused. In production (`NODE_ENV=production`), Exotel calls are refused until the token is set.
+  - Dashboard test calls need a logged-in clinic user and can only reach that clinic.
+  - Twilio webhooks are checked against Twilio's signature.
