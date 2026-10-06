@@ -59,6 +59,21 @@ CREATE INDEX IF NOT EXISTS idx_appt_doctor_start ON appointments(doctor_id, star
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_appt_active_slot
   ON appointments(doctor_id, start_at) WHERE status = 'booked';
 
+CREATE TABLE IF NOT EXISTS calls (
+  call_sid    TEXT PRIMARY KEY,
+  clinic_id   INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  from_number TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL DEFAULT 'in_progress',
+  outcome     TEXT NOT NULL DEFAULT '',
+  turns       INTEGER NOT NULL DEFAULT 0,
+  silences    INTEGER NOT NULL DEFAULT 0,
+  bookings    INTEGER NOT NULL DEFAULT 0,
+  duration_seconds INTEGER,
+  started_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ended_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_calls_clinic_started ON calls(clinic_id, started_at);
+
 CREATE TABLE IF NOT EXISTS chat_sessions (
   id         TEXT PRIMARY KEY,
   clinic_id  INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
@@ -68,9 +83,31 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
 );
 `;
 
+// Columns added after the first release. Applied to existing databases on startup.
+const ADDED_COLUMNS = {
+  clinics: {
+    voice_number: "TEXT NOT NULL DEFAULT ''", // the clinic's Twilio phone number, E.164
+    transfer_number: "TEXT NOT NULL DEFAULT ''", // front desk number for handing a call to a human
+    voice_language: "TEXT NOT NULL DEFAULT 'en-US'",
+    voice_name: "TEXT NOT NULL DEFAULT 'Polly.Joanna-Neural'",
+  },
+};
+
+function migrate(db) {
+  for (const [table, cols] of Object.entries(ADDED_COLUMNS)) {
+    const existing = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+    for (const [name, def] of Object.entries(cols)) {
+      if (!existing.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${def}`);
+    }
+  }
+  // Each phone number routes to exactly one clinic.
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_clinic_voice_number ON clinics(voice_number) WHERE voice_number <> ''`);
+}
+
 export function openDb(file = process.env.MEDIBOOK_DB || 'medibook.db') {
   const db = new DatabaseSync(file);
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 
@@ -91,7 +128,8 @@ const toDoctor = (row) =>
   row && { ...row, active: Boolean(row.active), working_hours: JSON.parse(row.working_hours) };
 
 const CLINIC_PUBLIC_COLS = `id, slug, name, timezone, phone, address, emergency_number,
-  assistant_notes, min_notice_minutes, booking_horizon_days`;
+  assistant_notes, min_notice_minutes, booking_horizon_days,
+  voice_number, transfer_number, voice_language, voice_name`;
 
 export function createStore(db) {
   return {
@@ -114,12 +152,17 @@ export function createStore(db) {
     getClinicBySlug(slug) {
       return db.prepare(`SELECT ${CLINIC_PUBLIC_COLS} FROM clinics WHERE slug = ?`).get(slug);
     },
+    getClinicByVoiceNumber(number) {
+      if (!number) return undefined;
+      return db.prepare(`SELECT ${CLINIC_PUBLIC_COLS} FROM clinics WHERE voice_number = ?`).get(number);
+    },
     getClinicPasswordHash(slug) {
       return db.prepare('SELECT id, password_hash FROM clinics WHERE slug = ?').get(slug);
     },
     updateClinic(id, fields) {
       const allowed = ['name', 'timezone', 'phone', 'address', 'emergency_number', 'assistant_notes',
-        'min_notice_minutes', 'booking_horizon_days', 'password_hash'];
+        'min_notice_minutes', 'booking_horizon_days', 'password_hash',
+        'voice_number', 'transfer_number', 'voice_language', 'voice_name'];
       const keys = Object.keys(fields).filter((k) => allowed.includes(k));
       if (keys.length) {
         db.prepare(`UPDATE clinics SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`)
@@ -229,6 +272,28 @@ export function createStore(db) {
         `SELECT a.*, d.name AS doctor_name FROM appointments a JOIN doctors d ON d.id = a.doctor_id
          WHERE ${where.join(' AND ')} ORDER BY a.start_at LIMIT 500`,
       ).all(...args);
+    },
+
+    // --- phone calls ---
+    startCall(callSid, clinicId, fromNumber) {
+      db.prepare('INSERT OR IGNORE INTO calls (call_sid, clinic_id, from_number) VALUES (?, ?, ?)')
+        .run(callSid, clinicId, fromNumber);
+      return this.getCall(callSid);
+    },
+    getCall(callSid) {
+      return db.prepare('SELECT * FROM calls WHERE call_sid = ?').get(callSid);
+    },
+    updateCall(callSid, fields) {
+      const allowed = ['status', 'outcome', 'turns', 'silences', 'bookings', 'duration_seconds', 'ended_at'];
+      const keys = Object.keys(fields).filter((k) => allowed.includes(k));
+      if (keys.length) {
+        db.prepare(`UPDATE calls SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE call_sid = ?`)
+          .run(...keys.map((k) => fields[k]), callSid);
+      }
+      return this.getCall(callSid);
+    },
+    listCalls(clinicId, limit = 100) {
+      return db.prepare('SELECT * FROM calls WHERE clinic_id = ? ORDER BY started_at DESC LIMIT ?').all(clinicId, limit);
     },
 
     // --- chat sessions ---

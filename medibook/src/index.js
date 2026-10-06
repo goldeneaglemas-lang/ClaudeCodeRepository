@@ -27,8 +27,20 @@ const purge = () => store.purgeChatSessions(new Date(Date.now() - retentionDays 
 purge();
 setInterval(purge, 6 * 3600 * 1000).unref();
 
+const voice = {
+  authToken: process.env.TWILIO_AUTH_TOKEN,
+  publicBaseUrl: process.env.PUBLIC_BASE_URL,
+  requireSignature: process.env.NODE_ENV === 'production',
+};
+if (!voice.authToken) {
+  console.warn(process.env.NODE_ENV === 'production'
+    ? 'TWILIO_AUTH_TOKEN not set; phone calls are disabled.'
+    : 'TWILIO_AUTH_TOKEN not set; phone webhooks accept unsigned requests (development only).');
+}
+
 const app = createApp({
   store, scheduler, anthropic, sessionSecret, model: DEFAULT_MODEL,
   secureCookies: process.env.NODE_ENV === 'production',
+  voice,
 });
 app.listen(port, () => console.log(`MediBook AI running on http://localhost:${port}`));

@@ -18,6 +18,12 @@ const clinic = store.createClinic({
   assistant_notes: 'Consultation fee is 500 rupees, payable at the clinic. Free parking behind the building. Please arrive 10 minutes early with any previous reports.',
   password_hash: hashPassword(password),
 });
+store.updateClinic(clinic.id, {
+  voice_number: process.env.DEMO_VOICE_NUMBER || '',
+  transfer_number: process.env.DEMO_TRANSFER_NUMBER || '',
+  voice_language: 'en-IN',
+  voice_name: 'Polly.Aditi',
+});
 const weekdays = (ranges) => Object.fromEntries(['mon', 'tue', 'wed', 'thu', 'fri'].map((d) => [d, ranges]));
 store.createDoctor(clinic.id, {
   name: 'Dr. Priya Sharma', specialty: 'General Physician', slot_minutes: 15,

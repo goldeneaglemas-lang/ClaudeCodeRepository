@@ -1,12 +1,13 @@
 # MediBook AI
 
-An AI receptionist for doctors and clinics. Patients chat or talk with it on the clinic's website, and it books, reschedules and cancels appointments against the doctors' real schedules.
+An AI receptionist for doctors and clinics. Patients chat or talk with it on the clinic's website, or simply **phone the clinic**, and it books, reschedules and cancels appointments against the doctors' real schedules.
 
 ## What's in the box
 
 | Part | URL | Who uses it |
 |---|---|---|
 | AI chat assistant, with voice input and spoken replies | `/c/<clinic-id>` | Patients |
+| **AI phone line**: answers calls to the clinic's number and books during the call (Twilio). Setup guide: [VOICE.md](VOICE.md) | `/voice/*` (Twilio webhooks) | Patients who call |
 | Booking form, no AI needed | `/c/<clinic-id>/book` | Patients (fallback / accessibility) |
 | Website widget, one `<script>` line | `/widget.js` | Clinic's website |
 | Clinic dashboard | `/admin` | Doctors / front desk |
@@ -55,6 +56,8 @@ Open http://localhost:3000/c/demo (patient) and http://localhost:3000/admin (cli
 
 Run the tests with `npm test`.
 
+**Try a phone call locally** without a phone line: with the server running, open a second terminal and run `npm run call`. You play the caller by typing. Real phone numbers: see [VOICE.md](VOICE.md).
+
 ### Add a real clinic
 
 ```bash
@@ -75,7 +78,9 @@ Then log in at `/admin`, add the doctors and their hours, and paste the snippet 
 | `PORT` | `3000` | HTTP port |
 | `MEDIBOOK_DB` | `medibook.db` | SQLite file |
 | `NOTIFY_WEBHOOK_URL` | none | Receives booking events as JSON |
-| `CHAT_RETENTION_DAYS` | `30` | Chat transcripts are deleted after this many days |
+| `CHAT_RETENTION_DAYS` | `30` | Chat and call transcripts are deleted after this many days |
+| `TWILIO_AUTH_TOKEN` | none | Verifies phone webhooks come from Twilio. **Required for phone calls in production** |
+| `PUBLIC_BASE_URL` | none | Public HTTPS address as configured in Twilio, e.g. `https://book.example.com` |
 
 ## Deploying
 
@@ -100,7 +105,9 @@ src/
   time.js             time-zone helpers
   auth.js             password hashing, signed session cookies
   notify.js           webhook notifications
+  voice/routes.js     phone calls: Twilio webhooks, turn handling, transfer, call log
+  voice/twiml.js      TwiML builder + Twilio signature check
 public/               chat, booking form, dashboard, widget (plain HTML/JS, no build step)
-scripts/              seed + create-clinic
+scripts/              seed, create-clinic, call-simulator (npm run call)
 test/                 unit + HTTP tests (AI is mocked)
 ```

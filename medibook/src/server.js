@@ -8,6 +8,7 @@ import {
 } from './auth.js';
 import { BookingError } from './scheduling.js';
 import { WEEKDAYS, addDays, isValidDateStr, isValidTimeZone, utcToZoned, zonedToUtc } from './time.js';
+import { callSessionId, callTranscript, createVoiceRouter } from './voice/routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(here, '..', 'public');
@@ -64,7 +65,9 @@ function validateDoctorInput(body, { partial = false } = {}) {
   return d;
 }
 
-export function createApp({ store, scheduler, anthropic, sessionSecret, model, secureCookies = false }) {
+const E164_RE = /^\+[1-9]\d{6,14}$/;
+
+export function createApp({ store, scheduler, anthropic, sessionSecret, model, secureCookies = false, voice = {} }) {
   if (!sessionSecret) throw new Error('sessionSecret is required');
   const app = express();
   app.set('trust proxy', 1);
@@ -87,6 +90,9 @@ export function createApp({ store, scheduler, anthropic, sessionSecret, model, s
   app.use('/static', express.static(PUBLIC_DIR, { index: false, maxAge: '1h' }));
   app.get('/widget.js', page('widget.js'));
   app.get('/healthz', (req, res) => res.json({ ok: true }));
+
+  // ---------- phone calls (Twilio webhooks) ----------
+  app.use('/voice', createVoiceRouter({ store, scheduler, anthropic, model, ...voice }));
 
   // ---------- public patient API ----------
   const clinicFromSlug = (req, res, next) => {
@@ -197,12 +203,40 @@ export function createApp({ store, scheduler, anthropic, sessionSecret, model, s
         fields[k] = n;
       }
     }
+    for (const k of ['voice_number', 'transfer_number']) {
+      if (b[k] !== undefined) {
+        const v = String(b[k]).replace(/[\s()-]/g, '');
+        if (v && !E164_RE.test(v)) throw new BookingError('INVALID', `${k.replace('_', ' ')} must be in international format, e.g. +14155550123`);
+        fields[k] = v;
+      }
+    }
+    if (b.voice_language !== undefined) {
+      if (!/^[a-z]{2,3}-[A-Z]{2}$/.test(b.voice_language)) throw new BookingError('INVALID', 'Voice language must look like en-US or en-IN');
+      fields.voice_language = b.voice_language;
+    }
+    if (b.voice_name !== undefined) {
+      if (!/^[A-Za-z0-9._-]{1,60}$/.test(b.voice_name)) throw new BookingError('INVALID', 'Invalid voice name, e.g. Polly.Joanna-Neural');
+      fields.voice_name = b.voice_name;
+    }
     if (b.new_password !== undefined) {
       if (String(b.new_password).length < 10) throw new BookingError('INVALID', 'Password must be at least 10 characters');
       fields.password_hash = hashPassword(String(b.new_password));
     }
     if (fields.name === '') throw new BookingError('INVALID', 'Clinic name is required');
-    res.json(store.updateClinic(req.clinic.id, fields));
+    try {
+      res.json(store.updateClinic(req.clinic.id, fields));
+    } catch (err) {
+      if (/UNIQUE/i.test(err.message)) throw new BookingError('INVALID', 'That phone number is already used by another clinic.');
+      throw err;
+    }
+  });
+
+  admin.get('/calls', (req, res) => res.json(store.listCalls(req.clinic.id)));
+  admin.get('/calls/:sid/transcript', (req, res) => {
+    const call = store.getCall(req.params.sid);
+    if (!call || call.clinic_id !== req.clinic.id) return res.status(404).json({ error: 'NOT_FOUND', message: 'Call not found' });
+    const session = store.getChatSession(req.clinic.id, callSessionId(call.call_sid));
+    res.json({ call, transcript: callTranscript(session?.messages) });
   });
 
   admin.get('/doctors', (req, res) => res.json(store.listDoctors(req.clinic.id, { includeInactive: true })));

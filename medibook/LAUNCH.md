@@ -7,7 +7,7 @@ The software in this folder is a working first version (MVP). This page covers w
 1. **Which country or countries will you sell in first?** This decides the legal rules below, the default emergency number, languages and SMS providers.
 2. **Product name and domain.** "MediBook AI" is a placeholder; check trademarks before using it.
 3. **Price** (suggestion in section 4).
-4. **Which channels matter most to your clinics:** website chat (built), phone calls, WhatsApp, or SMS (see the roadmap).
+4. **Which channels matter most to your clinics:** website chat and phone calls are built; WhatsApp and SMS are on the roadmap.
 5. **Do target clinics already use a practice-management or EHR system** whose calendar we must sync with? Or is MediBook their calendar?
 
 ## 2. Legal and compliance (do before taking real patient data)
@@ -26,12 +26,14 @@ For every market:
 - Keep chat retention short. It defaults to 30 days via `CHAT_RETENTION_DAYS`.
 - Encrypt backups.
 - Restrict who can access the server.
+- Phone calls: the greeting tells callers the assistant is automated and the call is transcribed. Check your country's rules on call recording or transcription consent and on disclosing AI. If Twilio handles US health data, sign Twilio's BAA too.
 
 ## 3. Before the first paying clinic
 
 - Deploy on HTTPS with daily backups (see README → Deploying), and set `SESSION_SECRET`.
 - Connect `NOTIFY_WEBHOOK_URL` to an SMS or WhatsApp sender so patients get confirmations. A Zapier, Make or n8n + Twilio/MSG91/Gupshup flow takes about an hour.
 - **Pilot with 1–3 friendly clinics for 2–4 weeks.** Read the chat transcripts every day, and adjust the rules in `src/assistant/agent.js` and the per-clinic notes in the dashboard.
+- For phone booking, get a Twilio number for each pilot clinic (start the regulatory paperwork early) and follow [VOICE.md](VOICE.md).
 - Test with a real `ANTHROPIC_API_KEY`. The automated tests mock the AI, so the live conversation quality has not been exercised in this repo yet.
 - Measure the real cost per conversation (next section).
 
@@ -45,7 +47,7 @@ For every market:
 ## 5. Roadmap (suggested order)
 
 1. **SMS/WhatsApp reminders** 24 hours and 2 hours before the visit. This cuts no-shows, which is the easiest feature to sell.
-2. **Phone calls:** answer the clinic's number with the same assistant via Twilio + LiveKit or Pipecat, reusing `scheduling.js` and the tools.
+2. ~~**Phone calls**~~ ✅ built (Twilio, see VOICE.md). Next upgrade: streaming audio so callers can interrupt (barge-in) and replies start faster, and support for local telephony providers (Exotel, Plivo).
 3. **WhatsApp chat** booking (very important in India and the Middle East).
 4. **Google Calendar / Outlook two-way sync** for doctors who keep a personal calendar.
 5. **Self-serve sign-up and billing** (Stripe or Razorpay), so clinics can onboard without you running `create-clinic`.

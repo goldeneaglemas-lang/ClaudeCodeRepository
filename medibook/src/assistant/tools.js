@@ -94,6 +94,26 @@ export const TOOLS = [
   },
 ];
 
+// Phone-only tools. The agent loop handles these itself (they control the call, not the schedule).
+export const VOICE_CONTROL_TOOLS = [
+  {
+    name: 'transfer_to_front_desk',
+    description:
+      'Transfer the phone call to a human at the front desk. Use when the caller asks for a person, ' +
+      'is upset, or needs something you cannot do.',
+    input_schema: {
+      type: 'object',
+      properties: { reason: { type: 'string', description: 'Short reason, for staff' } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'end_call',
+    description: 'Hang up the phone call. Use only after the caller has said they need nothing else, or has said goodbye.',
+    input_schema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+];
+
 const MAX_SLOTS_RETURNED = 60;
 
 /** Execute a tool call. Returns { content: string, isError: boolean }. */

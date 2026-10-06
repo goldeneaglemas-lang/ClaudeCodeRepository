@@ -27,6 +27,7 @@
       <nav class="tabs" role="tablist">
         <button role="tab" data-tab="appointments" aria-selected="true">Appointments</button>
         <button role="tab" data-tab="doctors" aria-selected="false">Doctors &amp; hours</button>
+        <button role="tab" data-tab="calls" aria-selected="false">Phone calls</button>
         <button role="tab" data-tab="timeoff" aria-selected="false">Time off</button>
         <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
         <button role="tab" data-tab="embed" aria-selected="false">Add to website</button>
@@ -91,6 +92,23 @@
         </form>
       </section>
 
+      <section data-panel="calls" class="stack hidden">
+        <div class="card">
+          <p id="c-summary" class="muted small"></p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>When</th><th>Caller</th><th>Length</th><th>Turns</th><th>Outcome</th><th></th></tr></thead>
+              <tbody id="c-rows"></tbody>
+            </table>
+          </div>
+          <p id="c-empty" class="muted small hidden">No calls yet. Set up your phone line in Settings → Phone line.</p>
+        </div>
+        <div class="card hidden" id="c-transcript-card">
+          <h2 id="c-transcript-title">Transcript</h2>
+          <div id="c-transcript" class="stack"></div>
+        </div>
+      </section>
+
       <section data-panel="timeoff" class="stack hidden">
         <form class="card" id="timeoff-form">
           <h2>Block time (leave, conferences, holidays)</h2>
@@ -124,6 +142,22 @@
           </div>
           <label for="s-notes">Information for the assistant (fees, parking, what to bring, policies). Do not include patient data.</label>
           <textarea id="s-notes" rows="5" maxlength="4000"></textarea>
+          <h3>Phone line (AI answers calls)</h3>
+          <div class="row">
+            <div><label for="s-voice-number">Clinic phone number on Twilio</label><input id="s-voice-number" placeholder="+14155550123"></div>
+            <div><label for="s-transfer">Transfer to (front desk, for "speak to a person")</label><input id="s-transfer" placeholder="+14155550199"></div>
+          </div>
+          <div class="row">
+            <div><label for="s-voice-lang">Caller language</label>
+              <select id="s-voice-lang">
+                <option value="en-US">English (US)</option><option value="en-IN">English (India)</option>
+                <option value="en-GB">English (UK)</option><option value="en-AU">English (Australia)</option>
+                <option value="hi-IN">Hindi</option><option value="es-US">Spanish (US)</option>
+                <option value="ar-AE">Arabic (UAE)</option>
+              </select></div>
+            <div><label for="s-voice-name">Voice</label><input id="s-voice-name" placeholder="Polly.Joanna-Neural"></div>
+          </div>
+          <p class="muted small">Leave the transfer number empty if no one can take transferred calls; the assistant will give out the front desk phone instead.</p>
           <label for="s-pass">New password (leave blank to keep)</label><input id="s-pass" type="password" autocomplete="new-password" minlength="10">
           <p><button type="submit">Save settings</button></p>
         </form>

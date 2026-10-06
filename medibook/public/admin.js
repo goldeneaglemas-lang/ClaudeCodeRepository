@@ -72,6 +72,7 @@
     document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
     document.querySelectorAll('[data-panel]').forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== tab));
     if (tab === 'timeoff') loadTimeOff();
+    if (tab === 'calls') loadCalls();
   });
 
   // ---------- appointments ----------
@@ -248,6 +249,60 @@
     } catch (err) { flash(err.message, true); }
   });
 
+  // ---------- phone calls ----------
+  const OUTCOMES = { booked: 'Booked', transferred: 'Transferred', completed: 'Completed', no_input: 'No response', '': 'In progress' };
+
+  async function loadCalls() {
+    try {
+      const calls = await call('/calls');
+      const tbody = $('c-rows');
+      tbody.textContent = '';
+      $('c-empty').classList.toggle('hidden', calls.length > 0);
+      const booked = calls.filter((c) => c.bookings > 0).length;
+      $('c-summary').textContent = calls.length
+        ? `Last ${calls.length} calls: ${booked} led to a booking, ${calls.filter((c) => c.outcome === 'transferred').length} transferred to staff.`
+        : '';
+      for (const c of calls) {
+        const tr = document.createElement('tr');
+        const when = new Date(c.started_at).toLocaleString(undefined, { timeZone: clinic.timezone, dateStyle: 'medium', timeStyle: 'short' });
+        const len = c.duration_seconds ? `${Math.floor(c.duration_seconds / 60)}m ${c.duration_seconds % 60}s` : '—';
+        const outcome = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = `badge ${c.outcome === 'booked' ? 'booked' : ''}`;
+        badge.textContent = OUTCOMES[c.outcome] ?? c.outcome;
+        outcome.appendChild(badge);
+        const act = document.createElement('td');
+        act.appendChild(button('Transcript', 'secondary', () => showTranscript(c)));
+        tr.append(cell(when), cell(c.from_number || 'Unknown'), cell(len), cell(c.turns), outcome, act);
+        tbody.appendChild(tr);
+      }
+    } catch (err) { flash(err.message, true); }
+  }
+
+  async function showTranscript(c) {
+    try {
+      const { transcript } = await call(`/calls/${encodeURIComponent(c.call_sid)}/transcript`);
+      const box = $('c-transcript');
+      box.textContent = '';
+      $('c-transcript-title').textContent = `Transcript — ${c.from_number || 'Unknown caller'}`;
+      if (!transcript.length) box.textContent = 'No transcript (deleted after the retention period, or the caller said nothing).';
+      for (const line of transcript) {
+        const p = document.createElement('p');
+        if (line.speaker === 'action') {
+          p.className = 'muted small';
+          p.textContent = `⚙ ${line.text}`;
+        } else {
+          const who = document.createElement('strong');
+          who.textContent = line.speaker === 'caller' ? 'Caller: ' : 'Assistant: ';
+          p.append(who, line.text);
+        }
+        box.appendChild(p);
+      }
+      $('c-transcript-card').classList.remove('hidden');
+      $('c-transcript-card').scrollIntoView({ behavior: 'smooth' });
+    } catch (err) { flash(err.message, true); }
+  }
+
   // ---------- settings ----------
   function fillSettings() {
     $('s-name').value = clinic.name;
@@ -258,6 +313,13 @@
     $('s-notice').value = clinic.min_notice_minutes;
     $('s-horizon').value = clinic.booking_horizon_days;
     $('s-notes').value = clinic.assistant_notes;
+    $('s-voice-number').value = clinic.voice_number;
+    $('s-transfer').value = clinic.transfer_number;
+    if (![...$('s-voice-lang').options].some((o) => o.value === clinic.voice_language)) {
+      $('s-voice-lang').appendChild(new Option(clinic.voice_language, clinic.voice_language));
+    }
+    $('s-voice-lang').value = clinic.voice_language;
+    $('s-voice-name').value = clinic.voice_name;
   }
 
   $('settings-form').addEventListener('submit', async (e) => {
@@ -267,6 +329,8 @@
         name: $('s-name').value, phone: $('s-phone').value, address: $('s-address').value, timezone: $('s-tz').value.trim(),
         emergency_number: $('s-emergency').value, min_notice_minutes: Number($('s-notice').value),
         booking_horizon_days: Number($('s-horizon').value), assistant_notes: $('s-notes').value,
+        voice_number: $('s-voice-number').value, transfer_number: $('s-transfer').value,
+        voice_language: $('s-voice-lang').value, voice_name: $('s-voice-name').value.trim(),
       };
       if ($('s-pass').value) body.new_password = $('s-pass').value;
       clinic = await call('/clinic', { method: 'PUT', body });

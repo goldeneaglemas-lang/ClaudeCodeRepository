@@ -1,17 +1,19 @@
 # MediBook AI — AI appointment booking assistant for doctors
 
-MediBook AI is an AI receptionist for clinics. Patients chat or talk with it on the clinic's website, and it books, reschedules and cancels appointments against the doctors' real schedules, around the clock. Clinic staff manage everything from a simple web dashboard.
+MediBook AI is an AI receptionist for clinics. Patients chat or talk with it on the clinic's website, or **call the clinic's phone number**, and it books, reschedules and cancels appointments against the doctors' real schedules, around the clock. Clinic staff manage everything from a simple web dashboard.
 
 All the code is in the [`medibook/`](medibook/) folder.
 
 ## Features
 
 - **AI chat assistant** (powered by Claude). Patients type in plain language, in their own language, to book, reschedule, cancel or check an appointment.
-- **Voice.** Patients can tap the mic to speak, and replies can be read aloud.
+- **AI phone line.** The AI answers calls to the clinic's number (via Twilio), talks with the caller, and books, reschedules or cancels during the call. It transfers to the front desk when asked. See [`medibook/VOICE.md`](medibook/VOICE.md).
+- **Voice on the website.** Patients can tap the mic to speak, and replies can be read aloud.
 - **Booking form.** A simple form that works even without the AI.
 - **Website widget.** One line of code adds a "Book appointment" button to the clinic's website.
 - **Clinic dashboard:**
   - daily and weekly appointment list
+  - phone call log with transcripts and outcomes
   - walk-ins, no-shows and cancellations
   - doctors' hours and leave
   - clinic settings
@@ -47,11 +49,14 @@ export ANTHROPIC_API_KEY=sk-ant-...      # Windows PowerShell: $env:ANTHROPIC_AP
 npm start
 ```
 
+Try a **phone call** without a phone line: keep the server running and, in a second terminal, run `cd medibook && npm run call`. You play the caller by typing.
+
 Run the tests with `cd medibook && npm test`.
 
 ## More documentation
 
 - [`medibook/README.md`](medibook/README.md): configuration, adding a real clinic, deployment, code map.
+- [`medibook/VOICE.md`](medibook/VOICE.md): connecting a real phone number (Twilio) so the AI answers calls.
 - [`medibook/LAUNCH.md`](medibook/LAUNCH.md): what's needed before selling (compliance, pilot, pricing, roadmap).
 
 ---
