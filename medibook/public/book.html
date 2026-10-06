@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Book an Appointment</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="page">
+    <h1 id="clinic-name">Book an appointment</h1>
+    <p class="muted small" id="clinic-meta"></p>
+    <p class="notice small" id="emergency">In a medical emergency, call your local emergency number.</p>
+
+    <section class="card" id="book-card">
+      <h2>New appointment</h2>
+      <form id="book-form" novalidate>
+        <div class="row">
+          <div><label for="doctor">Doctor</label><select id="doctor" required></select></div>
+          <div><label for="date">From date</label><input type="date" id="date" required></div>
+        </div>
+        <p class="muted small" id="doctor-bio"></p>
+        <div id="slots-area"><p class="muted small">Choose a doctor and date to see open times.</p></div>
+        <div id="patient-fields" class="hidden">
+          <div class="row">
+            <div><label for="name">Full name</label><input id="name" autocomplete="name" required maxlength="100"></div>
+            <div><label for="phone">Phone</label><input id="phone" type="tel" autocomplete="tel" required maxlength="20"></div>
+          </div>
+          <label for="email">Email (optional)</label><input id="email" type="email" autocomplete="email" maxlength="200">
+          <label for="reason">Reason for visit (optional)</label><input id="reason" maxlength="500">
+          <p id="book-error" class="notice error hidden" role="alert"></p>
+          <p><button type="submit" id="book-btn">Confirm booking</button></p>
+        </div>
+      </form>
+      <div id="booked" class="hidden" role="status">
+        <p>Your appointment is booked.</p>
+        <p class="code" id="booked-code"></p>
+        <p id="booked-when"></p>
+        <p class="muted small">Keep this confirmation code. You need it with your phone number to change or cancel.</p>
+        <button class="secondary" id="book-another">Book another</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Manage an appointment</h2>
+      <form id="manage-form" class="row">
+        <div><label for="m-code">Confirmation code</label><input id="m-code" required maxlength="10"></div>
+        <div><label for="m-phone">Phone used to book</label><input id="m-phone" type="tel" required maxlength="20"></div>
+        <div><button type="submit">Find</button></div>
+      </form>
+      <div id="manage-result" class="hidden">
+        <p id="m-details"></p>
+        <button class="danger" id="m-cancel">Cancel this appointment</button>
+      </div>
+      <p id="manage-msg" class="notice hidden" role="status"></p>
+      <p class="small muted">Need a different time? Cancel and book again, or <a id="chat-link" href="#">ask our assistant</a>.</p>
+    </section>
+  </main>
+  <script src="/static/book.js"></script>
+</body>
+</html>
