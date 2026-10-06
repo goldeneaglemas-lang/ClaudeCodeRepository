@@ -93,3 +93,22 @@ test('continues an existing conversation', async () => {
   await runAssistantTurn({ client, store, scheduler, clinic, history, userText: 'book please', now: MONDAY_8AM_IST });
   assert.equal(client.requests[0].messages.length, 3);
 });
+
+test('reply-language instruction: system message on supported models, inside the user turn otherwise', async () => {
+  const { store, scheduler, clinic } = setup();
+  const a = fakeClient([text('சரி.')]);
+  await runAssistantTurn({ client: a, model: 'claude-opus-5-5', store, scheduler, clinic, history: [], userText: 'appointment வேணும்', replyLanguage: 'ta-IN' });
+  assert.deepEqual(a.requests[0].messages.map((m) => m.role), ['user', 'system']);
+  assert.match(a.requests[0].messages[1].content, /Reply only in Tamil/);
+
+  const b = fakeClient([text('சரி.')]);
+  await runAssistantTurn({ client: b, model: 'claude-haiku-4-5', store, scheduler, clinic, history: [], userText: 'appointment வேணும்', replyLanguage: 'ta-IN' });
+  const msgs = b.requests[0].messages;
+  assert.equal(msgs.length, 1);
+  assert.equal(msgs[0].content[0].text, 'appointment வேணும்');
+  assert.match(msgs[0].content[1].text, /Reply only in Tamil/);
+
+  const c = fakeClient([text('Sure.')]);
+  await runAssistantTurn({ client: c, store, scheduler, clinic, history: [], userText: 'hi' });
+  assert.deepEqual(c.requests[0].messages.map((m) => m.role), ['user']);
+});

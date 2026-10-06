@@ -5,7 +5,7 @@ import { SESSION_COOKIE, parseCookies, readSessionToken } from '../auth.js';
 import { normalizePhone } from '../scheduling.js';
 import { BYTES_PER_MS, chunks } from './audio.js';
 import { friendlyError } from './diagnostics.js';
-import { clinicLanguages, languageOfText, phrase, sentences } from './languages.js';
+import { clinicLanguages, detectCallerLanguage, languageOfText, phrase, sentences } from './languages.js';
 import { callSessionId } from './routes.js';
 import { Vad } from './vad.js';
 
@@ -212,15 +212,16 @@ export class ExotelCall {
     this.thinking = true;
     try {
       this.#debug('state', 'Heard you, working out what you said…');
-      const { text, language } = await this.speech.transcribe(pcm)
+      // On a Tamil line, tell speech-to-text to expect Tamil; it still keeps English words as English.
+      const languageCode = this.languages.includes('ta-IN') ? 'ta-IN' : this.languages[0];
+      const { text } = await this.speech.transcribe(pcm, { languageCode })
         .catch((err) => { throw Object.assign(err, { service: 'Sarvam speech-to-text' }); });
       if (!text) { // noise, cough, line crackle: keep waiting for the caller
         this.#debug('state', 'Heard a sound but no words. Speak a little louder or closer to the microphone.');
         if (!this.vad.assistantTalking) this.#armSilenceTimer();
         return;
       }
-      if (this.languages.includes(language)) this.language = language;
-      else if (languageOfText(text) === 'ta-IN' && this.languages.includes('ta-IN')) this.language = 'ta-IN';
+      this.language = detectCallerLanguage(text, { allowed: this.languages, current: this.language });
       this.#debug('caller', text);
 
       this.silences = 0;
@@ -236,6 +237,7 @@ export class ExotelCall {
         result = await runAssistantTurn({
           client: this.anthropic, model: this.model, store: this.store, scheduler: this.scheduler, clinic: this.clinic,
           history, userText: text, channel: 'voice', callerPhone: this.from, languages: this.languages,
+          replyLanguage: this.languages.length > 1 ? this.language : null,
         }).catch((err) => { throw Object.assign(err, { service: 'Claude' }); });
         this.store.saveChatSession(this.clinic.id, sessionId, result.messages);
       } finally {

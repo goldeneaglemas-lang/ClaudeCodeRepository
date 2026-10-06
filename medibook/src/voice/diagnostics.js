@@ -1,4 +1,4 @@
-import { languageOfText } from './languages.js';
+import { clinicLanguages, languageOfText } from './languages.js';
 
 // Turns API and network errors into plain-language reasons, and runs a setup check
 // (Claude, Sarvam text-to-speech, Sarvam speech-to-text) for the dashboard.
@@ -34,7 +34,7 @@ const wrap = (service, fn) => async () => {
     return await fn();
   } catch (err) {
     console.error(`[voice-check] ${service}`, err);
-    err.friendly = friendlyError(err, service);
+    err.friendly ??= friendlyError(err, service);
     throw err;
   }
 };
@@ -42,6 +42,13 @@ const wrap = (service, fn) => async () => {
 /** Check each piece the phone assistant needs. Spends a tiny amount of API credit. */
 export async function runVoiceCheck({ anthropic, model, speech, clinic }) {
   const steps = [];
+  const languages = clinicLanguages(clinic);
+  steps.push(languages.includes('ta-IN')
+    ? { name: 'Call languages', ok: true, detail: languages.map((l) => (l === 'ta-IN' ? 'Tamil' : 'English')).join(' + ') + ` (greets in ${languages[0] === 'ta-IN' ? 'Tamil' : 'English'})`, ms: 0 }
+    : {
+      name: 'Call languages', ok: false,
+      error: 'This clinic is set to English only, so the assistant answers in English. In the dashboard go to Settings → Languages on calls → "Tamil and English" and save.',
+    });
   steps.push(anthropic
     ? await step('Claude (AI conversation)', wrap('Claude', async () => {
       const res = await anthropic.beta.messages.create({
@@ -68,7 +75,10 @@ export async function runVoiceCheck({ anthropic, model, speech, clinic }) {
   })));
   steps.push(audio
     ? await step('Sarvam hearing (speech-to-text)', wrap('Sarvam', async () => {
-      const { text, language } = await speech.transcribe(audio);
+      const { text, language } = await speech.transcribe(audio, { languageCode: languages.includes('ta-IN') ? 'ta-IN' : 'unknown' });
+      if (languages.includes('ta-IN') && languageOfText(text, 'en-IN') !== 'ta-IN') {
+        throw Object.assign(new Error('no Tamil'), { friendly: `Tamil speech came back without Tamil script ("${text}"), so replies may be in English. Check the SARVAM_STT_MODEL setting.` });
+      }
       return `heard "${text}" (${language ?? 'language unknown'})`;
     }))
     : { name: 'Sarvam hearing (speech-to-text)', ok: false, error: 'Skipped because text-to-speech failed.' });

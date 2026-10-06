@@ -71,7 +71,8 @@ Press **Check setup** on the test call page first. It tests the browser, microph
 | "You are not logged in" | Log in at `/admin` in the same browser, then open Phone calls → Test call again. |
 | Microphone ❌ / no sound picked up | Allow the microphone (icon in the address bar) and check the right input device in your computer's sound settings. |
 | The assistant keeps stopping mid-sentence | It's hearing itself through your speakers. Use headphones. |
-| The greeting is in English, not Tamil | Your database is from before Tamil support. Go to Settings → Languages on calls → "Tamil and English" and save, or delete `medibook.db` and run `npm run seed` again. |
+| The greeting is in English, or **it answers in English when you speak Tamil** | The clinic is set to English only, usually because your database was created before Tamil support. **Check setup** shows "Call languages ❌" in this case. Go to Settings → Languages on calls → "Tamil and English" and save, or delete `medibook.db` and run `npm run seed` again. |
+| It switches to English after I say "OK" or "yes" | That shouldn't happen any more: short words, numbers and "OK" keep the current language. It switches to English only when the caller says a full English sentence (4+ words), and back to Tamil as soon as they speak Tamil. |
 
 The server terminal also prints the full error for every failed call, starting with `[exotel] call error`.
 

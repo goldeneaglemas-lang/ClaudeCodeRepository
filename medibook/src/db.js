@@ -145,11 +145,11 @@ export function createStore(db) {
     createClinic(c) {
       const r = db
         .prepare(
-          `INSERT INTO clinics (slug, name, timezone, phone, address, emergency_number, assistant_notes, password_hash)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO clinics (slug, name, timezone, phone, address, emergency_number, assistant_notes, password_hash, voice_languages)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(c.slug, c.name, c.timezone, c.phone ?? '', c.address ?? '', c.emergency_number ?? '911',
-          c.assistant_notes ?? '', c.password_hash);
+          c.assistant_notes ?? '', c.password_hash, c.voice_languages ?? 'ta-IN,en-IN'); // new clinics: Tamil + English
       return this.getClinic(Number(r.lastInsertRowid));
     },
     getClinic(id) {

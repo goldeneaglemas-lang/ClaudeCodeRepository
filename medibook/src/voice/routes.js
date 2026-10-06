@@ -209,6 +209,7 @@ export function callTranscript(messages = []) {
   for (const m of messages) {
     if (m.role === 'user') {
       if (typeof m.content === 'string') lines.push({ speaker: 'caller', text: m.content });
+      else if (Array.isArray(m.content) && m.content[0]?.type === 'text') lines.push({ speaker: 'caller', text: m.content[0].text });
     } else if (m.role === 'assistant' && Array.isArray(m.content)) {
       for (const b of m.content) {
         if (b.type === 'text' && b.text.trim()) lines.push({ speaker: 'assistant', text: b.text.trim() });

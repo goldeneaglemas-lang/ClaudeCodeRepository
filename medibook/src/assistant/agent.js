@@ -1,8 +1,13 @@
 import { TOOLS, VOICE_CONTROL_TOOLS, executeTool } from './tools.js';
+import { replyLanguageInstruction } from '../voice/languages.js';
 import { formatLocal, utcToZoned } from '../time.js';
 
 export const DEFAULT_MODEL = process.env.MEDIBOOK_MODEL || 'claude-opus-5-5';
 const MAX_TOOL_ROUNDS = 8;
+
+// Models that accept operator instructions as {role: "system"} entries inside `messages`.
+// For other models the per-turn instruction is added to the user's message instead.
+const MID_CONVERSATION_SYSTEM_MODELS = /^claude-(opus-5|opus-5-5|opus-4-8|fable-5|fable-5-1|mythos-5|mythos-5-1|sonnet-5-5)$/;
 
 const RULES = `You are the booking assistant for a medical clinic. You help patients book, reschedule, cancel and check appointments, and answer simple questions about the clinic (doctors, hours, address).
 
@@ -70,6 +75,13 @@ export function buildSystemPrompt(clinic, doctors, now = new Date(), { channel =
       });
     }
   }
+  if (channel === 'chat' && languages.includes('ta-IN')) {
+    blocks.push({
+      type: 'text',
+      text: 'Patients may write in English, in Tamil, or in Tamil typed with English letters (for example "naalaikku appointment venum"). ' +
+        'Reply in the language they use: if they write Tamil in either script, reply in Tamil using Tamil script; if they write English, reply in English.',
+    });
+  }
   blocks.push({ type: 'text', text: clinicInfo });
   if (channel === 'voice' && callerPhone) {
     blocks.push({ type: 'text', text: `Caller's phone number (from caller ID): ${callerPhone}` });
@@ -93,9 +105,15 @@ function textOf(content) {
  */
 export async function runAssistantTurn({
   client, model = DEFAULT_MODEL, store, scheduler, clinic, history, userText, now = new Date(),
-  channel = 'chat', callerPhone = '', languages = [],
+  channel = 'chat', callerPhone = '', languages = [], replyLanguage = null,
 }) {
   const messages = [...history, { role: 'user', content: userText }];
+  // Tell the model which language to answer in this turn (decided in code from what the caller said).
+  const instruction = replyLanguageInstruction(replyLanguage);
+  if (instruction) {
+    if (MID_CONVERSATION_SYSTEM_MODELS.test(model)) messages.push({ role: 'system', content: instruction });
+    else messages[messages.length - 1] = { role: 'user', content: [{ type: 'text', text: userText }, { type: 'text', text: `(${instruction})` }] };
+  }
   const canTransfer = channel === 'voice' && Boolean(clinic.transfer_number);
   const system = buildSystemPrompt(clinic, store.listDoctors(clinic.id), now, { channel, callerPhone, canTransfer, languages });
   const tools = channel === 'voice'

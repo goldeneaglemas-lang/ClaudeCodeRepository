@@ -7,13 +7,14 @@ let server;
 let base;
 let ctx;
 let fakeReplies = [];
+let fakeAnthropic;
 
 before(async () => {
   ctx = setup();
-  const anthropic = {
+  fakeAnthropic = {
     beta: { messages: { create: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: fakeReplies.shift() ?? 'ok' }] }) } },
   };
-  const app = createApp({ ...ctx, anthropic, sessionSecret: 'test-secret' });
+  const app = createApp({ ...ctx, anthropic: fakeAnthropic, sessionSecret: 'test-secret' });
   server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}`;
@@ -73,6 +74,22 @@ test('chat endpoint creates and continues a session', async () => {
   assert.equal(second.body.session_id, first.body.session_id);
   assert.equal(ctx.store.getChatSession(ctx.clinic.id, first.body.session_id).messages.length, 4);
   assert.equal((await json('/api/c/demo/chat', { method: 'POST', body: { message: '' } })).status, 400);
+});
+
+test('chat: typed Tamil gets a reply-in-Tamil instruction', async () => {
+  const seen = [];
+  ctx.store.updateClinic(ctx.clinic.id, { voice_languages: 'ta-IN,en-IN' });
+  const orig = fakeAnthropic.beta.messages.create;
+  fakeAnthropic.beta.messages.create = async (req) => { seen.push(structuredClone(req)); return orig(req); };
+  try {
+    await json('/api/c/demo/chat', { method: 'POST', body: { message: 'நாளைக்கு appointment வேணும்' } });
+    await json('/api/c/demo/chat', { method: 'POST', body: { message: 'I need an appointment tomorrow' } });
+  } finally {
+    fakeAnthropic.beta.messages.create = orig;
+  }
+  assert.match(seen[0].messages.at(-1).content, /Reply only in Tamil/);
+  assert.equal(seen[1].messages.at(-1).role, 'user');
+  assert.match(seen[1].system.map((b) => b.text).join(' '), /Tamil typed with English letters/);
 });
 
 test('admin requires login and is scoped to the clinic', async () => {

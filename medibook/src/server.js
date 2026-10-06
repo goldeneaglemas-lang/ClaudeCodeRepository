@@ -162,8 +162,11 @@ export function createApp({
     if (history.length >= MAX_CHAT_MESSAGES) {
       return res.status(409).json({ error: 'SESSION_FULL', message: 'This conversation is very long. Please start a new chat.' });
     }
+    const languages = clinicLanguages(req.clinic);
     const { reply, messages } = await runAssistantTurn({
-      client: anthropic, model, store, scheduler, clinic: req.clinic, history, userText: message,
+      client: anthropic, model, store, scheduler, clinic: req.clinic, history, userText: message, languages,
+      // Tamil script typed: answer in Tamil for sure. Otherwise the model judges (English, or Tamil in English letters).
+      replyLanguage: languages.includes('ta-IN') && /[\u0B80-\u0BFF]/.test(message) ? 'ta-IN' : null,
     });
     store.saveChatSession(req.clinic.id, sessionId, messages);
     res.json({ session_id: sessionId, reply });

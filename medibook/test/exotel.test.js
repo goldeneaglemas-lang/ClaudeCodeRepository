@@ -33,7 +33,8 @@ function fakeSpeech(transcripts) {
   const spoken = [];
   return {
     spoken,
-    transcribe: async () => transcripts.shift() ?? { text: '', language: null },
+    languageCodes: [],
+    async transcribe(pcm, { languageCode } = {}) { this.languageCodes.push(languageCode); return transcripts.shift() ?? { text: '', language: null }; },
     synthesize: async (t, language, speaker) => { spoken.push({ text: t, language, speaker }); return tone(100); },
   };
 }
@@ -91,12 +92,12 @@ const until = async (cond, ms = 3000) => {
   }
 };
 
-test('Tamil caller books, then says bye in English', async () => {
+test('Tamil caller books, then switches to English', async () => {
   const script = [];
   const claude = fakeClaude(script);
   const speech = fakeSpeech([
     { text: 'நாளைக்கு Dr Test கிட்ட appointment வேணும்', language: 'ta-IN' },
-    { text: 'Thank you, bye', language: 'en-IN' },
+    { text: 'Thank you, that is all for today, bye', language: 'en-IN' },
   ]);
   const t = await start({ claude, speech });
   const { days } = t.scheduler.findSlots(t.clinic, t.doctor.id, {});
@@ -123,9 +124,16 @@ test('Tamil caller books, then says bye in English', async () => {
   const sys = claude.requests[0].system.map((b) => b.text).join('\n');
   assert.match(sys, /Tamil on the phone/);
   assert.match(sys, /\+919876543210/);
+  // Speech-to-text was told to expect Tamil, and the AI was told to answer in Tamil this turn.
+  assert.deepEqual(speech.languageCodes, ['ta-IN']);
+  const turn1 = claude.requests[0].messages;
+  assert.equal(turn1.at(-1).role, 'system');
+  assert.match(turn1.at(-1).content, /speaking Tamil\. Reply only in Tamil/);
 
   call.say();
   assert.equal(await call.closed, 1000); // assistant hung up
+  const lastTurn = claude.requests.at(-2).messages; // request that produced end_call
+  assert.match(lastTurn.find((m, i) => m.role === 'system' && i > turn1.length).content, /speaking English/);
   assert.equal(speech.spoken.at(-1).language, 'en-IN');
   assert.equal(speech.spoken.at(-1).text, 'Goodbye!');
 
@@ -226,4 +234,36 @@ test('stream requires the token; dashboard test calls need a login', async () =>
   await until(() => testCall.received.some((m) => m.event === 'debug' && m.kind === 'assistant'));
   testCall.ws.close();
   await until(() => t.store.listCalls(t.clinic.id).some((c) => c.provider === 'test'));
+});
+
+test('a Tamil caller saying "OK" or a number stays in Tamil', async () => {
+  const claude = fakeClaude([text('சரி.'), text('சரி.')]);
+  const speech = fakeSpeech([{ text: 'OK', language: 'en-IN' }, { text: '98765 43210', language: 'en-IN' }]);
+  const t = await start({ claude, speech });
+  const call = dial(t);
+  await call.connect();
+  await until(() => call.count('mark') >= 1);
+  call.say();
+  await until(() => claude.requests.length === 1 && speech.spoken.some((s) => s.text === 'சரி.'));
+  await until(() => call.count('mark') >= 2);
+  call.say();
+  await until(() => claude.requests.length === 2);
+  for (const req of claude.requests) assert.match(req.messages.at(-1).content, /speaking Tamil/);
+  assert.equal(t.store.getCall(call.callSid).language, 'ta-IN');
+  call.ws.close();
+});
+
+test('English-only clinic: no language instruction, speech-to-text expects English', async () => {
+  const claude = fakeClaude([text('Sure.')]);
+  const speech = fakeSpeech([{ text: 'I need an appointment', language: 'en-IN' }]);
+  const t = await start({ claude, speech, clinicFields: { voice_languages: 'en-IN' } });
+  const call = dial(t);
+  await call.connect();
+  await until(() => call.count('mark') >= 1);
+  assert.equal(speech.spoken[0].language, 'en-IN');
+  call.say();
+  await until(() => claude.requests.length === 1);
+  assert.deepEqual(speech.languageCodes, ['en-IN']);
+  assert.equal(claude.requests[0].messages.at(-1).role, 'user');
+  call.ws.close();
 });

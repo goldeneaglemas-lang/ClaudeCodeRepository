@@ -54,6 +54,33 @@ export function phrase(language, key, ...args) {
 }
 
 const TAMIL_SCRIPT = /[஀-௿]/;
+const TAMIL_CHARS = /[஀-௿]/g;
+const LATIN_WORDS = /[A-Za-z]+(?:'[A-Za-z]+)?/g;
+
+/**
+ * Which language did the caller just speak? Decided from the transcript itself, not left to the AI.
+ * - Any real amount of Tamil script means Tamil (Tamil speakers mix in English words: "appointment venum").
+ * - A switch to English needs a real English sentence (4+ words); "OK", "yes", "thank you", or a
+ *   phone number keep the current language, because Tamil callers say those too.
+ */
+export function detectCallerLanguage(text, { allowed = ['ta-IN', 'en-IN'], current = allowed[0] } = {}) {
+  const tamil = (String(text).match(TAMIL_CHARS) ?? []).length;
+  const latinWords = String(text).match(LATIN_WORDS) ?? [];
+  const latinLetters = latinWords.join('').length;
+  if (allowed.includes('ta-IN') && tamil > 0 && tamil / (tamil + latinLetters) >= 0.2) return 'ta-IN';
+  if (allowed.includes('en-IN') && tamil === 0 && latinWords.length >= 4) return 'en-IN';
+  return allowed.includes(current) ? current : allowed[0];
+}
+
+/** Per-turn instruction to the AI so it answers in the caller's language. */
+export function replyLanguageInstruction(language) {
+  if (language === 'ta-IN') {
+    return 'The caller is speaking Tamil. Reply only in Tamil: everyday spoken Tamil in Tamil script, even if earlier replies were in English. ' +
+      'Keep English words people normally use, like appointment or doctor, and English letters for codes and phone numbers.';
+  }
+  if (language === 'en-IN') return 'The caller is speaking English. Reply in English.';
+  return null;
+}
 
 /** Which voice should read this text: Tamil script means Tamil, otherwise English. */
 export function languageOfText(text, fallback = 'en-IN') {
