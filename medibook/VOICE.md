@@ -57,6 +57,24 @@ Exotel call flow:  [Voicebot] ──► [Passthru: /exotel/next] ──200──
    - Use headphones, so the assistant doesn't hear itself.
    - Test calls use exactly the same audio path as real phone calls, and they appear in the Phone calls tab marked "test call".
 
+### If the test call doesn't work
+
+Press **Check setup** on the test call page first. It tests the browser, microphone, Claude and Sarvam one by one and names what's wrong. Common causes:
+
+| What you see | Fix |
+|---|---|
+| Server won't start: `Cannot find package 'ws'` or `'sarvamai'` | You pulled new code but didn't install it. Run `npm install` in `medibook/`, then `npm start`. |
+| "SARVAM_API_KEY / ANTHROPIC_API_KEY is not set" | Set the keys **in the same terminal window** you run `npm start` in, then restart the server. Mac/Linux: `export SARVAM_API_KEY=...`. Windows PowerShell: `$env:SARVAM_API_KEY="..."`. Windows cmd: `set SARVAM_API_KEY=...` |
+| "rejected the API key (401/403)" | The key is wrong, revoked or not activated. Create a new one in the provider's dashboard. |
+| "out of credits or rate limited (429)" | Add credits or a payment method in that provider's dashboard. |
+| "Browsers only allow the microphone on https:// or http://localhost" | Open `http://localhost:3000` on the computer running the server, not an IP address. On a cloud server, use HTTPS. |
+| "You are not logged in" | Log in at `/admin` in the same browser, then open Phone calls → Test call again. |
+| Microphone ❌ / no sound picked up | Allow the microphone (icon in the address bar) and check the right input device in your computer's sound settings. |
+| The assistant keeps stopping mid-sentence | It's hearing itself through your speakers. Use headphones. |
+| The greeting is in English, not Tamil | Your database is from before Tamil support. Go to Settings → Languages on calls → "Tamil and English" and save, or delete `medibook.db` and run `npm run seed` again. |
+
+The server terminal also prints the full error for every failed call, starting with `[exotel] call error`.
+
 ### Go live with a real number
 
 You need the app deployed on a public **HTTPS** address, for example `https://book.yourdomain.in` (see README → Deploying).

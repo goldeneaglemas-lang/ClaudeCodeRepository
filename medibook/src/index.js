@@ -54,7 +54,7 @@ const app = createApp({
   store, scheduler, anthropic, sessionSecret, model: DEFAULT_MODEL,
   secureCookies: process.env.NODE_ENV === 'production',
   voice,
-  speechEnabled: Boolean(speech),
+  speech,
 });
 const server = app.listen(port, () => console.log(`MediBook AI running on http://localhost:${port}`));
 attachExotel(server, {

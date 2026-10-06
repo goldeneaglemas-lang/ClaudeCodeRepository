@@ -13,6 +13,15 @@
       <p class="muted">Talk to your phone assistant through this computer's microphone. It uses exactly the same voice, languages and booking rules as a real call to your clinic number. Use headphones so the assistant doesn't hear itself. Bookings made here are real: cancel them in the dashboard afterwards.</p>
     </div>
     <div class="card stack">
+      <div>
+        <h2>1. Check setup</h2>
+        <p class="muted small">Tests the microphone, Claude and Sarvam one by one, so you can see exactly what is missing. Uses a tiny amount of API credit.</p>
+        <button id="check" type="button" class="secondary">Check setup</button>
+        <ul id="checks" class="checks"></ul>
+      </div>
+    </div>
+    <div class="card stack">
+      <h2>2. Call</h2>
       <div class="row">
         <div><label for="from">Pretend caller's number</label><input id="from" type="tel" value="+91 98765 43210"></div>
         <div><button id="start" type="button">📞 Start call</button></div>

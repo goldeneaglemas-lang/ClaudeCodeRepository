@@ -4,6 +4,7 @@ import { runAssistantTurn } from '../assistant/agent.js';
 import { SESSION_COOKIE, parseCookies, readSessionToken } from '../auth.js';
 import { normalizePhone } from '../scheduling.js';
 import { BYTES_PER_MS, chunks } from './audio.js';
+import { friendlyError } from './diagnostics.js';
 import { clinicLanguages, languageOfText, phrase, sentences } from './languages.js';
 import { callSessionId } from './routes.js';
 import { Vad } from './vad.js';
@@ -115,11 +116,11 @@ export class ExotelCall {
     this.maxTimer = setTimeout(() => this.#endWith('noInputBye', 'completed'), MAX_CALL_MS);
 
     if (!this.anthropic) {
+      this.#debug('error', 'ANTHROPIC_API_KEY is not set on the server, so the assistant cannot talk.');
       return this.#endWith(clinic.transfer_number ? 'troubleTransfer' : 'troubleBye',
         clinic.transfer_number ? 'transferred' : 'error');
     }
     const greeting = phrase(this.language, 'greeting', { clinic, others: this.languages });
-    this.#debug('assistant', greeting);
     if (await this.#say(greeting, this.language)) this.#armSilenceTimer();
   }
 
@@ -130,7 +131,8 @@ export class ExotelCall {
     if (!ttsCache) ttsCaches.set(this.speech, (ttsCache = new Map()));
     const key = `${language}|${this.clinic.voice_speaker}|${text}`;
     if (ttsCache.has(key)) return ttsCache.get(key);
-    const audio = await this.speech.synthesize(text, language, this.clinic.voice_speaker || undefined);
+    const audio = await this.speech.synthesize(text, language, this.clinic.voice_speaker || undefined)
+      .catch((err) => { throw Object.assign(err, { service: 'Sarvam text-to-speech' }); });
     if (text.length <= 300) {
       if (ttsCache.size >= TTS_CACHE_LIMIT) ttsCache.delete(ttsCache.keys().next().value);
       ttsCache.set(key, audio);
@@ -147,6 +149,7 @@ export class ExotelCall {
       const audio = await next;
       next = i + 1 < parts.length ? this.#tts(parts[i + 1], language) : null;
       if (gen !== this.speakGen || this.ended) { next?.catch(() => {}); return false; }
+      if (i === 0) this.#debug('assistant', text); // shown once the caller actually starts hearing it
       this.#sendAudio(audio);
     }
     return this.#waitForPlayback(gen);
@@ -208,13 +211,16 @@ export class ExotelCall {
     if (this.ended || !this.clinic) return;
     this.thinking = true;
     try {
-      const { text, language } = await this.speech.transcribe(pcm);
+      this.#debug('state', 'Heard you, working out what you said…');
+      const { text, language } = await this.speech.transcribe(pcm)
+        .catch((err) => { throw Object.assign(err, { service: 'Sarvam speech-to-text' }); });
       if (!text) { // noise, cough, line crackle: keep waiting for the caller
+        this.#debug('state', 'Heard a sound but no words. Speak a little louder or closer to the microphone.');
         if (!this.vad.assistantTalking) this.#armSilenceTimer();
         return;
       }
       if (this.languages.includes(language)) this.language = language;
-      else if (/[஀-௿]/.test(text) && this.languages.includes('ta-IN')) this.language = 'ta-IN';
+      else if (languageOfText(text) === 'ta-IN' && this.languages.includes('ta-IN')) this.language = 'ta-IN';
       this.#debug('caller', text);
 
       this.silences = 0;
@@ -230,7 +236,7 @@ export class ExotelCall {
         result = await runAssistantTurn({
           client: this.anthropic, model: this.model, store: this.store, scheduler: this.scheduler, clinic: this.clinic,
           history, userText: text, channel: 'voice', callerPhone: this.from, languages: this.languages,
-        });
+        }).catch((err) => { throw Object.assign(err, { service: 'Claude' }); });
         this.store.saveChatSession(this.clinic.id, sessionId, result.messages);
       } finally {
         clearTimeout(filler);
@@ -241,7 +247,6 @@ export class ExotelCall {
         bookings: call.bookings + result.bookings,
         outcome: result.bookings > 0 && call.outcome !== 'transferred' ? 'booked' : call.outcome,
       });
-      this.#debug('assistant', result.reply);
       this.thinking = false;
       const played = await this.#say(result.reply);
       if (result.action === 'transfer') return this.#transfer({ announce: false });
@@ -269,13 +274,13 @@ export class ExotelCall {
     if (this.ended) return;
     if (outcome === 'transferred') this.store.updateCall(this.callSid, { outcome });
     const text = phrase(this.language, phraseKey, this.clinic);
-    this.#debug('assistant', text);
     try { await this.#say(text, this.language); } catch (e) { console.error('[exotel] tts failed', e.message); }
     this.#finish(outcome);
   }
 
   async #fail(err) {
     console.error('[exotel] call error', this.callSid, err);
+    this.#debug('error', friendlyError(err, err?.service ?? 'Server'));
     if (this.ended || !this.clinic) return this.ws.close(1011);
     this.thinking = false;
     const canTransfer = Boolean(this.clinic.transfer_number);

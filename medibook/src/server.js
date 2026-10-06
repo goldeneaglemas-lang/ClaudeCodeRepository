@@ -2,12 +2,13 @@ import express from 'express';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runAssistantTurn } from './assistant/agent.js';
+import { DEFAULT_MODEL, runAssistantTurn } from './assistant/agent.js';
 import {
   SESSION_COOKIE, createSessionToken, hashPassword, parseCookies, readSessionToken, verifyPassword,
 } from './auth.js';
 import { BookingError } from './scheduling.js';
 import { WEEKDAYS, addDays, isValidDateStr, isValidTimeZone, utcToZoned, zonedToUtc } from './time.js';
+import { runVoiceCheck } from './voice/diagnostics.js';
 import { SUPPORTED_LANGUAGE_CODES, clinicLanguages } from './voice/languages.js';
 import { callSessionId, callTranscript, createVoiceRouter } from './voice/routes.js';
 
@@ -69,7 +70,7 @@ function validateDoctorInput(body, { partial = false } = {}) {
 const E164_RE = /^\+[1-9]\d{6,14}$/;
 
 export function createApp({
-  store, scheduler, anthropic, sessionSecret, model, secureCookies = false, voice = {}, speechEnabled = false,
+  store, scheduler, anthropic, sessionSecret, model, secureCookies = false, voice = {}, speech = null, speechEnabled = Boolean(speech),
 }) {
   if (!sessionSecret) throw new Error('sessionSecret is required');
   const app = express();
@@ -256,6 +257,10 @@ export function createApp({
 
   admin.get('/calls', (req, res) => res.json(store.listCalls(req.clinic.id)));
   admin.get('/voice-status', (req, res) => res.json({ ai: Boolean(anthropic), speech: speechEnabled }));
+  const checkLimiter = rateLimit({ windowMs: 60_000, max: 5 });
+  admin.post('/voice-check', checkLimiter, async (req, res) => {
+    res.json({ steps: await runVoiceCheck({ anthropic, model: model ?? DEFAULT_MODEL, speech, clinic: req.clinic }) });
+  });
   admin.get('/calls/:sid/transcript', (req, res) => {
     const call = store.getCall(req.params.sid);
     if (!call || call.clinic_id !== req.clinic.id) return res.status(404).json({ error: 'NOT_FOUND', message: 'Call not found' });

@@ -130,3 +130,6 @@ pre.snippet { background: var(--surface-2); padding: .8rem; border-radius: 10px;
 .meter { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin-top: .3rem; }
 .meter > div { height: 100%; width: 0; background: var(--accent); transition: width .1s linear; }
 .row-end { flex: 0 0 auto; }
+.checks { list-style: none; padding: 0; margin: .8rem 0 0; display: grid; gap: .4rem; font-size: .9rem; }
+.checks li { padding: .5rem .7rem; border-radius: 10px; background: var(--surface-2); }
+.checks li.bad { background: var(--danger-soft); color: var(--danger); }
