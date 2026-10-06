@@ -105,7 +105,8 @@ export class ExotelCall {
 
     const clinic = this.slug ? this.store.getClinicBySlug(this.slug) : this.store.getClinicByPhoneDigits(start.to);
     if (!clinic || (this.test && clinic.id !== this.testClinicId)) {
-      console.warn('[exotel] no clinic for call', { slug: this.slug, to: start.to });
+      console.warn(`[exotel] no clinic for this call: clinic=${this.slug ?? '(none in URL)'} dialled=${start.to ?? '?'}. ` +
+        'Add ?clinic=<clinic-id> to the Voicebot URL, or set the clinic phone number in Settings.');
       this.ws.close(1000);
       return;
     }
@@ -113,6 +114,7 @@ export class ExotelCall {
     this.languages = clinicLanguages(clinic);
     this.language = this.languages[0];
     this.store.startCall(this.callSid, clinic.id, this.from, { provider: this.test ? 'test' : 'exotel', language: this.language });
+    console.log(`[exotel] ${this.test ? 'test call' : 'call'} ${this.callSid} from ${this.from || 'unknown'} to ${clinic.slug} (${this.languages.join('+')})`);
     this.maxTimer = setTimeout(() => this.#endWith('noInputBye', 'completed'), MAX_CALL_MS);
 
     if (!this.anthropic) {
@@ -297,6 +299,7 @@ export class ExotelCall {
     for (const resolve of [...this.marks.values()]) resolve(false);
     if (this.clinic && this.callSid) {
       const call = this.store.getCall(this.callSid);
+      console.log(`[exotel] call ${this.callSid} ended: ${call?.outcome || reason}, ${this.turns} turns`);
       this.store.updateCall(this.callSid, {
         status: 'ended',
         ended_at: new Date().toISOString(),
@@ -333,14 +336,16 @@ export function attachExotel(server, {
     if (url.searchParams.get('test') === '1') {
       const session = readSessionToken(sessionSecret, parseCookies(req.headers.cookie)[SESSION_COOKIE]);
       const clinic = slug && store.getClinicBySlug(slug);
-      if (!session || !clinic || clinic.id !== session.clinicId) return reject(socket, 401);
+      if (!session || !clinic || clinic.id !== session.clinicId) return reject(socket, 401, 'test call without a dashboard login');
       testClinicId = clinic.id;
     } else if (streamToken) {
-      if (!tokenMatches(url.searchParams.get('token'), streamToken)) return reject(socket, 401);
+      if (!tokenMatches(url.searchParams.get('token'), streamToken)) {
+        return reject(socket, 401, 'wrong or missing token in the stream URL (must match EXOTEL_STREAM_TOKEN)');
+      }
     } else if (requireToken) {
-      return reject(socket, 503);
+      return reject(socket, 503, 'EXOTEL_STREAM_TOKEN is not set (required in production)');
     }
-    if (!speech) return reject(socket, 503);
+    if (!speech) return reject(socket, 503, 'SARVAM_API_KEY is not set');
 
     wss.handleUpgrade(req, socket, head, (ws) => {
       new ExotelCall(ws, { store, scheduler, anthropic, model, speech, slug, testClinicId, timings });
@@ -349,7 +354,8 @@ export function attachExotel(server, {
   return wss;
 }
 
-function reject(socket, status) {
+function reject(socket, status, reason) {
+  console.warn(`[exotel] refused a call stream: ${reason}`);
   socket.write(`HTTP/1.1 ${status} ${status === 401 ? 'Unauthorized' : 'Service Unavailable'}\r\nConnection: close\r\n\r\n`);
   socket.destroy();
 }

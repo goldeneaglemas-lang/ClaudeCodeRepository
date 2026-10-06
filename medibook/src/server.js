@@ -102,6 +102,7 @@ export function createApp({
   app.all('/exotel/next', (req, res) => {
     const sid = String(req.query.CallSid ?? req.body?.CallSid ?? '');
     const call = sid && store.getCall(sid);
+    console.log(`[exotel] next step for ${sid || '(no CallSid)'}: ${call?.outcome === 'transferred' ? 'transfer to front desk' : 'hang up'}`);
     if (call?.outcome === 'transferred') return res.status(200).send('transfer');
     res.status(404).send('no transfer');
   });
