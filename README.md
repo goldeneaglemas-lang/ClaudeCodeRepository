@@ -18,3 +18,8 @@ Ask Claude things like:
 - "Add Ada Lovelace's birthday on December 10th."
 
 Claude Code will route these to the `birthday-reminder` agent automatically.
+
+## MediBook AI — appointment booking assistant for doctors
+
+See [`medibook/README.md`](medibook/README.md) for the product (AI chat/voice booking, booking form,
+website widget, clinic dashboard) and [`medibook/LAUNCH.md`](medibook/LAUNCH.md) for the go-to-market checklist.

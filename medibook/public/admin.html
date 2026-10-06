@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clinic Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="admin">
+    <section id="login" class="card hidden" aria-labelledby="login-h">
+      <h1 id="login-h">Clinic login</h1>
+      <form id="login-form">
+        <label for="l-slug">Clinic ID</label><input id="l-slug" autocomplete="username" required>
+        <label for="l-pass">Password</label><input id="l-pass" type="password" autocomplete="current-password" required>
+        <p id="login-error" class="notice error hidden" role="alert"></p>
+        <p><button type="submit">Log in</button></p>
+      </form>
+    </section>
+
+    <div id="app" class="hidden">
+      <header>
+        <h1 id="h-clinic">Dashboard</h1>
+        <a class="btn secondary" id="open-chat" target="_blank" rel="noopener">Open patient chat ↗</a>
+        <button class="secondary" id="logout">Log out</button>
+      </header>
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="appointments" aria-selected="true">Appointments</button>
+        <button role="tab" data-tab="doctors" aria-selected="false">Doctors &amp; hours</button>
+        <button role="tab" data-tab="timeoff" aria-selected="false">Time off</button>
+        <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
+        <button role="tab" data-tab="embed" aria-selected="false">Add to website</button>
+      </nav>
+      <p id="flash" class="notice hidden" role="status"></p>
+
+      <section data-panel="appointments" class="stack">
+        <div class="card">
+          <div class="row">
+            <div><label for="a-from">From</label><input type="date" id="a-from"></div>
+            <div><label for="a-to">To</label><input type="date" id="a-to"></div>
+            <div><label for="a-doctor">Doctor</label><select id="a-doctor"></select></div>
+            <div><label for="a-status">Status</label>
+              <select id="a-status"><option value="">All</option><option value="booked">Booked</option><option value="cancelled">Cancelled</option><option value="completed">Completed</option><option value="no_show">No-show</option></select></div>
+            <div><button id="a-refresh" type="button">Refresh</button></div>
+          </div>
+        </div>
+        <div class="card table-wrap">
+          <table>
+            <thead><tr><th>When</th><th>Doctor</th><th>Patient</th><th>Reason</th><th>Status</th><th>Code / Source</th><th></th></tr></thead>
+            <tbody id="a-rows"></tbody>
+          </table>
+          <p id="a-empty" class="muted small hidden">No appointments in this range.</p>
+        </div>
+        <details class="card">
+          <summary>Add an appointment manually (walk-in / phone call)</summary>
+          <form id="manual-form">
+            <div class="row">
+              <div><label for="mf-doctor">Doctor</label><select id="mf-doctor"></select></div>
+              <div><label for="mf-start">Start (must be an open slot)</label><input id="mf-start" type="datetime-local" required></div>
+            </div>
+            <div class="row">
+              <div><label for="mf-name">Patient name</label><input id="mf-name" required></div>
+              <div><label for="mf-phone">Phone</label><input id="mf-phone" type="tel" required></div>
+              <div><label for="mf-reason">Reason</label><input id="mf-reason"></div>
+            </div>
+            <p><button type="submit">Add appointment</button></p>
+          </form>
+        </details>
+      </section>
+
+      <section data-panel="doctors" class="stack hidden">
+        <div class="card table-wrap">
+          <table>
+            <thead><tr><th>Doctor</th><th>Specialty</th><th>Slot</th><th>Active</th><th></th></tr></thead>
+            <tbody id="d-rows"></tbody>
+          </table>
+        </div>
+        <form class="card" id="doctor-form">
+          <h2 id="df-title">Add a doctor</h2>
+          <input type="hidden" id="df-id">
+          <div class="row">
+            <div><label for="df-name">Name</label><input id="df-name" required></div>
+            <div><label for="df-specialty">Specialty</label><input id="df-specialty"></div>
+            <div><label for="df-slot">Appointment length (minutes)</label><input id="df-slot" type="number" min="5" max="240" value="15"></div>
+          </div>
+          <label for="df-bio">Short bio (the assistant uses this to match patients)</label><input id="df-bio">
+          <label>Working hours — e.g. <code>09:00-13:00, 16:00-19:00</code>; leave blank for a day off</label>
+          <div class="hours-grid" id="df-hours"></div>
+          <label><input type="checkbox" id="df-active" checked> Accepting bookings</label>
+          <p class="row"><button type="submit">Save doctor</button><button type="button" class="secondary" id="df-reset">Clear</button></p>
+        </form>
+      </section>
+
+      <section data-panel="timeoff" class="stack hidden">
+        <form class="card" id="timeoff-form">
+          <h2>Block time (leave, conferences, holidays)</h2>
+          <div class="row">
+            <div><label for="t-doctor">Doctor</label><select id="t-doctor"></select></div>
+            <div><label for="t-start">From</label><input id="t-start" type="datetime-local" required></div>
+            <div><label for="t-end">To</label><input id="t-end" type="datetime-local" required></div>
+            <div><label for="t-reason">Note</label><input id="t-reason"></div>
+          </div>
+          <p class="muted small">Existing appointments in this period are not cancelled automatically — check the Appointments tab.</p>
+          <p><button type="submit">Block time</button></p>
+        </form>
+        <div class="card table-wrap">
+          <table><thead><tr><th>Doctor</th><th>From</th><th>To</th><th>Note</th><th></th></tr></thead><tbody id="t-rows"></tbody></table>
+        </div>
+      </section>
+
+      <section data-panel="settings" class="hidden">
+        <form class="card" id="settings-form">
+          <h2>Clinic settings</h2>
+          <div class="row">
+            <div><label for="s-name">Clinic name</label><input id="s-name" required></div>
+            <div><label for="s-phone">Front desk phone</label><input id="s-phone"></div>
+          </div>
+          <label for="s-address">Address</label><input id="s-address">
+          <div class="row">
+            <div><label for="s-tz">Time zone (IANA, e.g. Asia/Kolkata)</label><input id="s-tz" required></div>
+            <div><label for="s-emergency">Emergency number</label><input id="s-emergency"></div>
+            <div><label for="s-notice">Minimum notice (minutes)</label><input id="s-notice" type="number" min="0"></div>
+            <div><label for="s-horizon">Book up to (days ahead)</label><input id="s-horizon" type="number" min="1"></div>
+          </div>
+          <label for="s-notes">Information for the assistant (fees, parking, what to bring, policies). Do not include patient data.</label>
+          <textarea id="s-notes" rows="5" maxlength="4000"></textarea>
+          <label for="s-pass">New password (leave blank to keep)</label><input id="s-pass" type="password" autocomplete="new-password" minlength="10">
+          <p><button type="submit">Save settings</button></p>
+        </form>
+      </section>
+
+      <section data-panel="embed" class="hidden">
+        <div class="card stack">
+          <h2>Add the assistant to your website</h2>
+          <p>Paste this just before <code>&lt;/body&gt;</code> on your website. A "Book appointment" button appears in the corner.</p>
+          <pre class="snippet" id="embed-snippet"></pre>
+          <p>Or link to these pages directly (Google Business profile, WhatsApp, Instagram bio, SMS):</p>
+          <pre class="snippet" id="embed-links"></pre>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="/static/admin.js"></script>
+</body>
+</html>

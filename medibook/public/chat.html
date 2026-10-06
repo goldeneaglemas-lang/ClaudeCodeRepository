@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Book an Appointment</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="chat-app">
+    <div class="chat-header">
+      <div class="title">
+        <h1 id="clinic-name">Appointment assistant</h1>
+        <div class="sub">AI booking assistant · not for medical advice</div>
+      </div>
+      <button class="icon-btn" id="speak-toggle" aria-pressed="false" title="Read replies aloud">🔈 Voice</button>
+      <button class="icon-btn" id="new-chat" title="Start a new conversation">New chat</button>
+    </div>
+    <div class="emergency" id="emergency">Medical emergency? Call your local emergency number now.</div>
+    <div class="messages" id="messages" aria-live="polite"></div>
+    <div class="suggestions" id="suggestions">
+      <button type="button">Book an appointment</button>
+      <button type="button">Reschedule my appointment</button>
+      <button type="button">Cancel my appointment</button>
+    </div>
+    <form class="composer" id="composer">
+      <button type="button" class="icon-btn mic hidden" id="mic" title="Speak" aria-label="Speak">🎤</button>
+      <input id="input" autocomplete="off" maxlength="1000" placeholder="Type your message…" aria-label="Message">
+      <button type="submit" id="send">Send</button>
+    </form>
+    <div class="chat-footer"><a id="form-link" href="#">Prefer a form? Book without chat</a></div>
+  </div>
+  <script src="/static/chat.js"></script>
+</body>
+</html>
