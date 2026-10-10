@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { balanceDueCents, formatCents } from "@/lib/money";
 import { isRefundable, refundDeadline } from "@/lib/policy";
 import { addDays, formatDateLong, formatTime, weekdayOf } from "@/lib/time";
+import type { Me } from "@/lib/session";
 import DetailsForm from "./DetailsForm";
 
 type Service = { id: string; name: string; description: string | null; durationMin: number; priceCents: number };
@@ -17,6 +18,8 @@ type Props = {
   lastDate: string; // last bookable date
   depositCents: number;
   cancellationDays: number;
+  me: Me | null; // signed-in customer, if any
+  initialServiceId?: string | null; // from "Book again"
 };
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -36,8 +39,12 @@ function monthLabel(month: string) {
   return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, 1)));
 }
 
-export default function BookingFlow({ services, timezone, today, lastDate, depositCents, cancellationDays }: Props) {
-  const [serviceId, setServiceId] = useState<string | null>(null);
+export default function BookingFlow(props: Props) {
+  const { services, timezone, today, lastDate, depositCents, cancellationDays } = props;
+  const [me, setMe] = useState<Me | null>(props.me);
+  const [serviceId, setServiceId] = useState<string | null>(
+    services.some((s) => s.id === props.initialServiceId) ? props.initialServiceId! : null,
+  );
   const [month, setMonth] = useState(monthOf(today));
   const [days, setDays] = useState<Record<string, Slot[]>>({});
   const [loading, setLoading] = useState(false);
@@ -223,6 +230,8 @@ export default function BookingFlow({ services, timezone, today, lastDate, depos
 
       {service && slot && (
         <Summary
+          me={me}
+          onMeChange={setMe}
           service={service}
           startsAt={new Date(slot.startsAt)}
           timezone={timezone}
@@ -242,6 +251,8 @@ export default function BookingFlow({ services, timezone, today, lastDate, depos
 }
 
 function Summary(props: {
+  me: Me | null;
+  onMeChange: (me: Me | null) => void;
   service: Service;
   startsAt: Date;
   timezone: string;
@@ -282,7 +293,9 @@ function Summary(props: {
         </p>
       )}
       <DetailsForm
-        key={startsAt.toISOString()}
+        key={`${startsAt.toISOString()}-${props.me?.phone ?? ""}`}
+        me={props.me}
+        onMeChange={props.onMeChange}
         serviceId={service.id}
         startsAt={startsAt.toISOString()}
         depositCents={depositCents}

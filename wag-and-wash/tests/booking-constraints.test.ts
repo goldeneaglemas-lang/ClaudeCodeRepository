@@ -41,7 +41,11 @@ describe("no double-booking", () => {
     },
   );
 
-  it("gives the slot to exactly one of 10 customers booking at the same moment", async () => {
+  // The database alone, without the app's calendar lock. Simultaneous inserts
+  // can deadlock inside the constraint check (Postgres refuses one after
+  // ~1 second), which is why the app takes a lock first (src/lib/bookings.ts).
+  // Either way, exactly one wins.
+  it("gives the slot to exactly one of 10 customers booking at the same moment", { timeout: 30_000 }, async () => {
     const attempts = await Promise.all(Array.from({ length: 10 }, () => bookingData(TEN_AM)));
     const results = await Promise.allSettled(attempts.map((data) => db.booking.create({ data })));
 
@@ -49,7 +53,7 @@ describe("no double-booking", () => {
     const lost = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
     expect(won).toHaveLength(1);
     expect(lost).toHaveLength(9);
-    for (const r of lost) expect(isOverlapError(r.reason)).toBe(true);
+    for (const r of lost) expect(isOverlapError(r.reason) || /40P01|deadlock/i.test(String(r.reason))).toBe(true);
     expect(await db.booking.count()).toBe(1);
   });
 });

@@ -4,8 +4,8 @@ Wag & Wash is a dog grooming business run by Jess. Customers book an appointment
 online and pay a **$25 deposit** to hold it. Jess runs the day from an owner
 dashboard. Customers get a text reminder before their appointment.
 
-> Status: **steps 1–3 done** (skeleton, availability, booking + deposit). Next: step 4
-> (phone sign-in + My bookings). Jess's answers
+> Status: **steps 1–4 done** (skeleton, availability, booking + deposit, sign-in + My
+> bookings). Next: step 5 (Jess's dashboard). Jess's answers
 > are in §8; a few smaller questions remain, with defaults in use.
 
 ---
@@ -162,6 +162,7 @@ Rules, as built:
    margin, and the checkout page closes 1 minute before the hold ends.) Stale holds are cleared first, in the
    same transaction.
    The exclusion constraint makes this **atomic**. If two people click the same slot at once, one insert fails, and that person gets `409 Slot taken`.
+   Booking transactions also take a Postgres advisory lock on the calendar first. Racing raw inserts can deadlock inside the constraint check (Postgres resolves it after about a second, as an error rather than "slot taken"); the lock rules that out. With one calendar, the wait is milliseconds.
 3. **Create a Stripe Checkout session** for $25 with `metadata.booking_id`, then return its URL.
 4. The customer pays on Stripe's hosted page.
 
@@ -188,17 +189,29 @@ Rules, as built:
 
 ### 5.6 Cancelling: `POST /api/bookings/:id/cancel`
 - Customer: if `starts_at − now ≥ 10 days`, refund the $25 deposit through Stripe. Otherwise the deposit is kept. The check runs on the server, at the moment of cancelling.
+- The booking is cancelled first (freeing the slot), then refunded. If the refund fails, the booking stays cancelled and a `failed` refund is recorded for Jess to retry from her dashboard.
+- Only the customer's own, confirmed, not-yet-started bookings can be cancelled online. Simultaneous cancels refund once.
+- Refunds are keyed per payment, so one booking can have two (e.g. a duplicate payment, then a cancellation).
+
+### 5.7 Customer sign-in
+- `POST /api/auth/code` texts a 6-digit code (10 minutes, only the newest counts, 5 guesses, 3 codes per phone per 15 min, 10 per IP per hour). Only a keyed hash (`AUTH_SECRET`) is stored.
+- `POST /api/auth/verify` signs in: a random 30-day session token in an `HttpOnly`, `SameSite=Lax` cookie; only its hash is stored. Sessions are keyed by phone, so someone can sign in before their first booking.
+- **Booking now needs sign-in.** The phone comes from the session, never from the form, so nobody can book under (or see) someone else's number. A signed-in customer's name and email are kept up to date, and they can pick a saved dog.
+- State-changing requests from another website are refused (Origin check).
+- Without Twilio settings, the code is shown on screen instead of texted (development only).
 - Jess: chooses *refund* or *keep* each time.
 
-### 5.7 API summary
+### 5.8 API summary
 | Method | Path | Who |
 |---|---|---|
-| POST | `/api/auth/otp/send`, `/api/auth/otp/verify` | customer |
+| POST | `/api/auth/code`, `/api/auth/verify`, `/api/auth/sign-out` | customer |
+| GET | `/api/me` | customer |
+| PATCH | `/api/me/dogs/:id`, `/api/me/preferences` | customer |
 | GET | `/api/services`, `/api/slots?serviceId&from&to` | public |
 | GET/POST/PATCH | `/api/dogs` | customer |
-| POST | `/api/bookings` | customer (public until step 4 adds phone sign-in) |
+| POST | `/api/bookings` | signed-in customer |
 | GET | `/api/bookings/:id` (status only) | customer |
-| POST | `/api/bookings/:id/release` | customer |
+| POST | `/api/bookings/:id/release` | the customer who made the hold |
 | GET | `/api/bookings/mine` | customer |
 | POST | `/api/bookings/:id/cancel` | customer / owner |
 | GET/PATCH | `/api/admin/bookings`, `/api/admin/customers`, `/api/admin/settings`, `/api/admin/time-off` | owner |
@@ -222,7 +235,7 @@ Rules, as built:
 1. ✅ **Skeleton**: Next.js app, Prisma schema, migrations, seed services and hours.
 2. ✅ **Availability**: the slots endpoint and the booking calendar UI, with tests for overlaps, time off and edges of opening hours.
 3. ✅ **Booking + deposit**: hold the slot, Stripe Checkout, webhook confirmation, the expire-holds cron.
-4. **Customer auth + My bookings**: OTP login, list, cancel with refund.
+4. ✅ **Customer auth + My bookings**: OTP login, list, cancel with refund.
 5. **Owner dashboard**: today view, calendar, time off, settings, walk-ins.
 6. **SMS**: confirmation, reminder cron, STOP handling.
 7. **Polish and launch**: mobile layout, error states, Stripe/Twilio live keys, a test day with Jess.

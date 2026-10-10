@@ -54,7 +54,8 @@ export const stripeProvider: PaymentProvider = {
         amount: input.amountCents,
         metadata: { booking_id: input.bookingId, reason: input.reason },
       },
-      { idempotencyKey: `refund-${input.bookingId}` },
+      // One refund per payment: a booking can need two (e.g. a duplicate payment, then a cancellation).
+      { idempotencyKey: `refund-${input.paymentIntentId}` },
     );
     return refund.id;
   },

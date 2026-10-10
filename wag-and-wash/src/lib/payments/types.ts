@@ -25,6 +25,6 @@ export interface PaymentProvider {
   createDepositCheckout(input: DepositCheckoutInput): Promise<Checkout>;
   /** Stop a checkout page from taking payment (customer backed out). Safe to call twice. */
   expireCheckout(checkoutId: string): Promise<void>;
-  /** Returns the refund's id. Safe to retry: the same booking is never refunded twice. */
+  /** Returns the refund's id. Safe to retry: the same payment is never refunded twice. */
   refund(input: RefundInput): Promise<string>;
 }

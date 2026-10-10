@@ -9,7 +9,9 @@ export const db = new PrismaClient({ datasources: { db: { url: process.env.TEST_
 
 /** Empties the booking-related tables between tests. Seeded services, hours and settings stay. */
 export async function clearBookings() {
-  await db.$executeRawUnsafe('TRUNCATE "sms_logs", "payments", "bookings", "dogs", "customers", "time_off" CASCADE');
+  await db.$executeRawUnsafe(
+    'TRUNCATE "sms_logs", "payments", "bookings", "dogs", "customers", "time_off", "login_codes", "customer_sessions" CASCADE',
+  );
 }
 
 let phoneCounter = 0;
@@ -59,3 +61,11 @@ export function isOverlapError(e: unknown): boolean {
 }
 
 export const at = (iso: string) => new Date(iso);
+
+/** Signs a phone in the way a customer would (code by text, then verify) and returns the Cookie header. */
+export async function signIn(phone: string): Promise<string> {
+  const { sendLoginCode, verifyLoginCode, SESSION_COOKIE } = await import("@/lib/auth");
+  const { devCode } = await sendLoginCode(phone, null);
+  const { token } = await verifyLoginCode(phone, devCode!);
+  return `${SESSION_COOKIE}=${token}`;
+}

@@ -18,7 +18,7 @@ export const testProvider: PaymentProvider = {
   async expireCheckout(): Promise<void> {},
 
   async refund(input: RefundInput): Promise<string> {
-    return `test_re_${input.bookingId}`;
+    return `test_re_${input.paymentIntentId}`;
   },
 };
 

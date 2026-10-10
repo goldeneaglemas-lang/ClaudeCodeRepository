@@ -8,14 +8,18 @@ import { GET as expireHolds } from "@/app/api/cron/expire-holds/route";
 import { POST as testPay } from "@/app/api/dev/checkout/[id]/pay/route";
 import { POST as stripeWebhook } from "@/app/api/webhooks/stripe/route";
 import { getSlots } from "@/lib/slots";
-import { clearBookings, db } from "./helpers";
+import { clearBookings, db, signIn } from "./helpers";
 
 const WEBHOOK_SECRET = "whsec_test_secret";
 process.env.STRIPE_WEBHOOK_SECRET = WEBHOOK_SECRET;
 
+let sam: string; // Cookie header for a signed-in customer
+
 beforeEach(async () => {
   await clearBookings();
   vi.restoreAllMocks();
+  vi.spyOn(console, "info").mockImplementation(() => {}); // test texts
+  sam = await signIn("+15552345678");
 });
 afterAll(() => db.$disconnect());
 
@@ -32,15 +36,21 @@ async function freeSlot(daysAhead = 20) {
 function form(slot: { serviceId: string; startsAt: string }, overrides: Record<string, unknown> = {}) {
   return {
     ...slot,
-    customer: { name: "Sam Rivera", phone: "(555) 234-5678", email: "" },
+    customer: { name: "Sam Rivera", email: "" },
     dog: { name: "Biscuit", breed: "", size: "medium", notes: "" },
     acceptNonRefundable: false,
     ...overrides,
   };
 }
 
-const post = (body: unknown) =>
-  createBooking(new Request("http://localhost:3000/api/bookings", { method: "POST", body: JSON.stringify(body) }));
+const post = (body: unknown, cookie: string | null = sam, headers: Record<string, string> = {}) =>
+  createBooking(
+    new Request("http://localhost:3000/api/bookings", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { ...(cookie ? { cookie } : {}), ...headers },
+    }),
+  );
 const idParams = (id: string) => ({ params: Promise.resolve({ id }) });
 
 describe("POST /api/bookings", () => {
@@ -54,18 +64,30 @@ describe("POST /api/bookings", () => {
     expect(customer.email).toBeNull();
   });
 
+  it("needs a signed-in customer", async () => {
+    expect((await post(form(await freeSlot()), null)).status).toBe(401);
+    expect((await post(form(await freeSlot()), "ww_session=made-up")).status).toBe(401);
+    expect(await db.booking.count()).toBe(0);
+  });
+
+  it("uses the signed-in phone, ignoring any phone in the form", async () => {
+    const res = await post(form(await freeSlot(), { customer: { name: "Sam", phone: "+15559999999" } }));
+    expect(res.status).toBe(201);
+    expect((await db.customer.findFirstOrThrow()).phone).toBe("+15552345678");
+  });
+
+  it("refuses a request sent from another website", async () => {
+    const res = await post(form(await freeSlot()), sam, { origin: "https://evil.example" });
+    expect(res.status).toBe(403);
+  });
+
   it("says 409 when the time has gone", async () => {
     const slot = await freeSlot();
     await post(form(slot));
-    const res = await post(form(slot, { customer: { name: "Alex", phone: "555-987-6543" } }));
+    const alex = await signIn("+15559876543");
+    const res = await post(form(slot, { customer: { name: "Alex" } }), alex);
     expect(res.status).toBe(409);
     expect((await res.json()).error).toMatch(/isn't available|just booked/);
-  });
-
-  it("rejects a bad phone number", async () => {
-    const res = await post(form(await freeSlot(), { customer: { name: "Sam", phone: "12345" } }));
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/10-digit/);
   });
 
   it("rejects missing or invalid fields", async () => {
@@ -73,9 +95,11 @@ describe("POST /api/bookings", () => {
     expect((await post({})).status).toBe(400);
     expect((await post(form(slot, { dog: { name: "", size: "medium" } }))).status).toBe(400);
     expect((await post(form(slot, { dog: { name: "Rex", size: "huge" } }))).status).toBe(400);
-    expect((await post(form(slot, { customer: { name: "Sam", phone: "5552345678", email: "not-an-email" } }))).status).toBe(400);
+    expect((await post(form(slot, { customer: { name: "Sam", email: "not-an-email" } }))).status).toBe(400);
+    expect((await post(form(slot, { customer: { name: "" } }))).status).toBe(400);
     expect(
-      (await createBooking(new Request("http://localhost/api/bookings", { method: "POST", body: "not json" }))).status,
+      (await createBooking(new Request("http://localhost/api/bookings", { method: "POST", body: "not json", headers: { cookie: sam } })))
+        .status,
     ).toBe(400);
   });
 
@@ -97,9 +121,17 @@ describe("test checkout", () => {
 
   it("won't take payment once the hold is released", async () => {
     const { bookingId } = await (await post(form(await freeSlot()))).json();
-    await release(new Request("http://localhost/x", { method: "POST" }), idParams(bookingId));
+    await release(new Request("http://localhost/x", { method: "POST", headers: { cookie: sam } }), idParams(bookingId));
     const res = await testPay(new Request("http://localhost/x", { method: "POST" }), idParams(`test_cs_${bookingId}`));
     expect(res.status).toBe(410);
+  });
+
+  it("only lets the customer who made a hold release it", async () => {
+    const { bookingId } = await (await post(form(await freeSlot()))).json();
+    const alex = await signIn("+15559876543");
+    await release(new Request("http://localhost/x", { method: "POST", headers: { cookie: alex } }), idParams(bookingId));
+    await release(new Request("http://localhost/x", { method: "POST" }), idParams(bookingId));
+    expect((await db.booking.findUniqueOrThrow({ where: { id: bookingId } })).status).toBe("pending_payment");
   });
 
   it("isn't available in production", async () => {

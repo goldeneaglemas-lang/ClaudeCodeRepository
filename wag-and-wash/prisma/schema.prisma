@@ -208,3 +208,34 @@ model SmsLog {
   @@index([bookingId])
   @@map("sms_logs")
 }
+
+// One-time sign-in codes texted to a customer's phone (PLAN.md §2, §6).
+// Only a keyed hash of the code is stored.
+model LoginCode {
+  id         String    @id @default(uuid()) @db.Uuid
+  phone      String // E.164
+  codeHash   String    @map("code_hash")
+  ip         String? // for rate limiting
+  attempts   Int       @default(0)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([phone, createdAt])
+  @@index([ip, createdAt])
+  @@map("login_codes")
+}
+
+// A signed-in customer. Keyed by phone, so someone can sign in before their
+// first booking. The cookie holds a random token; only its hash is stored.
+model CustomerSession {
+  id         String   @id @default(uuid()) @db.Uuid
+  tokenHash  String   @unique @map("token_hash")
+  phone      String
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz
+
+  @@index([phone])
+  @@map("customer_sessions")
+}

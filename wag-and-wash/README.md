@@ -4,9 +4,9 @@ Online booking for Wag & Wash, Jess's dog grooming business. Customers book and
 pay a $25 deposit; Jess runs the day from an owner dashboard. The full design
 is in [PLAN.md](PLAN.md).
 
-**Status:** steps 1–3 of 7 are done. Customers can book a time and pay the
-$25 deposit; the booking is confirmed once payment arrives. Next: phone
-sign-in and "My bookings".
+**Status:** steps 1–4 of 7 are done. Customers confirm their phone with a
+texted code, book a time and pay the $25 deposit, then see and cancel their
+bookings on "My bookings" (refunded 10+ days ahead). Next: Jess's dashboard.
 
 ## Run it locally
 
@@ -33,6 +33,12 @@ To use real Stripe (test mode):
 3. Copy the `whsec_…` secret it prints into `STRIPE_WEBHOOK_SECRET`, restart `npm run dev`.
 4. Pay with card `4242 4242 4242 4242`, any future date, any CVC.
 
+## Texts without a Twilio account
+
+If `TWILIO_*` is empty, `npm run dev` doesn't send texts. Sign-in codes are
+shown on screen in a yellow "Test mode" box, and texts are written to the
+server log. Production refuses to run without Twilio settings.
+
 ## Checks
 
 ```bash
@@ -57,6 +63,10 @@ npm run build
 | `src/lib/bookings.ts` | Hold a slot, confirm a paid deposit, refund when needed, release holds |
 | `src/lib/payments/` | Stripe, plus the test stand-in used when there's no Stripe key |
 | `src/app/api/webhooks/stripe/` | Stripe tells us here when a deposit is paid |
+| `src/app/my-bookings/` | My bookings: upcoming, cancel, past, dogs, reminder setting |
+| `src/lib/auth.ts` | Sign-in codes, sessions, rate limits |
+| `src/lib/account.ts` | What a signed-in customer can see and change, including cancelling |
+| `src/lib/sms/` | Twilio, plus the test stand-in used when there are no Twilio settings |
 | `src/lib/` (other) | Database client, money helpers, slot loading |
 | `tests/` | Tests, including 10 customers booking the same slot at once |
 

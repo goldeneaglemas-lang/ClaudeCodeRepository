@@ -112,10 +112,13 @@ describe("createBookingHold", () => {
     expect((await db.booking.findUniqueOrThrow({ where: { id: second.bookingId } })).status).toBe("pending_payment");
   });
 
-  it("gives the slot to exactly one of 5 customers booking at once", async () => {
+  it("gives the slot to exactly one of 10 customers booking at once, quickly and with a clear message", async () => {
+    const started = Date.now();
     const attempts = await Promise.allSettled(
-      [1, 2, 3, 4, 5].map((n) => hold(FAR, { customer: { name: `C${n}`, phone: `+1555234000${n}` } })),
+      Array.from({ length: 10 }, (_, n) => hold(FAR, { customer: { name: `C${n}`, phone: `+155523400${String(n).padStart(2, "0")}` } })),
     );
+    // Every loser gets a clear "taken" answer, promptly (a deadlock would take Postgres a second or more).
+    expect(Date.now() - started).toBeLessThan(3000);
     expect(attempts.filter((a) => a.status === "fulfilled")).toHaveLength(1);
     for (const a of attempts.filter((a): a is PromiseRejectedResult => a.status === "rejected")) {
       expect(a.reason).toBeInstanceOf(BookingError);
@@ -124,18 +127,41 @@ describe("createBookingHold", () => {
     expect(await db.booking.count({ where: { status: "pending_payment" } })).toBe(1);
   });
 
-  it("reuses a returning customer and dog without changing their saved details", async () => {
+  it("keeps a returning customer's details up to date and reuses their dog", async () => {
     const first = await hold(FAR);
     await pay(first.bookingId);
     await hold(nyTime("2026-11-25", "10:00"), {
-      customer: { name: "Someone Else", phone: "+15552345678", email: "other@example.com" },
+      customer: { name: "Sam R.", phone: "+15552345678", email: "sam.new@example.com" },
       dog: { name: "biscuit", size: "xl", notes: "changed" },
     });
     const customers = await db.customer.findMany({ include: { dogs: true } });
     expect(customers).toHaveLength(1);
-    expect(customers[0]).toMatchObject({ name: "Sam Rivera", email: "sam@example.com" });
+    expect(customers[0]).toMatchObject({ name: "Sam R.", email: "sam.new@example.com" });
+    // Same-named dog is the same dog; its saved details are edited on My bookings, not here.
     expect(customers[0].dogs).toHaveLength(1);
     expect(customers[0].dogs[0]).toMatchObject({ size: "medium", notes: "Nervous of dryers" });
+  });
+
+  it("keeps the saved email if the form leaves it blank", async () => {
+    await hold(FAR);
+    await hold(nyTime("2026-11-25", "10:00"), { customer: { name: "Sam", phone: "+15552345678", email: "" } });
+    expect((await db.customer.findFirstOrThrow()).email).toBe("sam@example.com");
+  });
+
+  it("books one of the customer's saved dogs by id", async () => {
+    const first = await hold(FAR);
+    const dog = await db.dog.findFirstOrThrow();
+    const second = await hold(nyTime("2026-11-25", "10:00"), { dog: { id: dog.id } });
+    const b = await db.booking.findUniqueOrThrow({ where: { id: second.bookingId } });
+    expect(b.dogId).toBe(dog.id);
+    expect(first.bookingId).not.toBe(second.bookingId);
+  });
+
+  it("refuses someone else's dog", async () => {
+    await hold(FAR, { customer: { name: "Alex", phone: "+15559876543" }, dog: { name: "Rex", size: "large" } });
+    const alexsDog = await db.dog.findFirstOrThrow({ where: { name: "Rex" } });
+    await expect(hold(nyTime("2026-11-25", "10:00"), { dog: { id: alexsDog.id } })).rejects.toMatchObject({ code: "dog_not_found" });
+    expect(await db.booking.count()).toBe(1);
   });
 
   it("frees the slot if there's no payment provider (production without a Stripe key)", async () => {

@@ -10,3 +10,9 @@ export function normalizeUsPhone(input: string): string | null {
   if (/^[01]/.test(national) || /^[01]/.test(national.slice(3))) return null;
   return `+1${national}`;
 }
+
+/** "+15552345678" -> "(555) 234-5678" */
+export function formatUsPhone(e164: string): string {
+  const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
+  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
+}

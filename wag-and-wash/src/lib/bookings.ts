@@ -12,17 +12,20 @@ import { isRefundable } from "./policy";
 import { getSettings, getSlots } from "./slots";
 import { MINUTE, formatDateLong, formatTime, localDate } from "./time";
 
+export type NewDog = { name: string; breed?: string | null; size: DogSize; notes?: string | null };
+
 export type NewBookingInput = {
   serviceId: string;
   startsAt: Date;
-  customer: { name: string; phone: string; email?: string | null }; // phone already in E.164
-  dog: { name: string; breed?: string | null; size: DogSize; notes?: string | null };
+  // The phone is the customer's verified sign-in phone (E.164), never typed-in data.
+  customer: { name: string; phone: string; email?: string | null };
+  dog: { id: string } | NewDog; // one of their saved dogs, or a new one
   acceptNonRefundable: boolean;
 };
 
 export class BookingError extends Error {
   constructor(
-    readonly code: "slot_unavailable" | "slot_taken" | "needs_non_refundable_ok" | "payment_setup_failed",
+    readonly code: "slot_unavailable" | "slot_taken" | "needs_non_refundable_ok" | "payment_setup_failed" | "dog_not_found",
     message: string,
   ) {
     super(message);
@@ -39,6 +42,18 @@ class StatusChanged extends Error {}
 
 function isUniqueError(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+}
+
+/**
+ * Lets one booking change Jess's calendar at a time, until its transaction ends.
+ * Inserts that race for the same slot can deadlock inside the no-overlap
+ * check (seen in tests/booking-constraints.test.ts); Postgres takes a second
+ * or more to give up on one, and it surfaces as an error, not "slot taken".
+ * The rest of the booking work makes that rare here; this rules it out.
+ * With one calendar, the wait is milliseconds.
+ */
+export async function lockCalendar(tx: Prisma.TransactionClient): Promise<void> {
+  await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(7242001)");
 }
 
 /** Marks unpaid holds whose time has run out as expired, freeing their slots. */
@@ -85,29 +100,35 @@ export async function createBookingHold(
   let booking: Booking;
   try {
     booking = await prisma.$transaction(async (tx) => {
+      await lockCalendar(tx);
       await expireStaleHolds(now, tx);
 
-      // Matched by phone. Until phone sign-in arrives (step 4), an existing
-      // customer's saved details are never changed from this public form.
-      const customer =
-        (await tx.customer.findUnique({ where: { phone: input.customer.phone } })) ??
-        (await tx.customer.create({
-          data: { name: input.customer.name, phone: input.customer.phone, email: input.customer.email || null },
-        }));
+      // The phone has been verified by sign-in, so the customer's name and
+      // email can be kept up to date from the form.
+      const { name, phone, email } = input.customer;
+      const customer = await tx.customer.upsert({
+        where: { phone },
+        update: { name, ...(email ? { email } : {}) },
+        create: { name, phone, email: email || null },
+      });
 
-      const dog =
-        (await tx.dog.findFirst({
-          where: { customerId: customer.id, name: { equals: input.dog.name, mode: "insensitive" } },
-        })) ??
-        (await tx.dog.create({
-          data: {
-            customerId: customer.id,
-            name: input.dog.name,
-            breed: input.dog.breed || null,
-            size: input.dog.size,
-            notes: input.dog.notes || null,
-          },
-        }));
+      const newDog = "id" in input.dog ? null : input.dog;
+      const dog = newDog
+        ? // A "new" dog with the same name as a saved one is the same dog.
+          ((await tx.dog.findFirst({
+            where: { customerId: customer.id, name: { equals: newDog.name, mode: "insensitive" } },
+          })) ??
+          (await tx.dog.create({
+            data: {
+              customerId: customer.id,
+              name: newDog.name,
+              breed: newDog.breed || null,
+              size: newDog.size,
+              notes: newDog.notes || null,
+            },
+          })))
+        : await tx.dog.findFirst({ where: { id: (input.dog as { id: string }).id, customerId: customer.id } });
+      if (!dog) throw new BookingError("dog_not_found", "Please choose one of your dogs or add a new one.");
 
       return tx.booking.create({
         data: {
@@ -191,6 +212,7 @@ export async function confirmDepositPaid(paid: DepositPaid): Promise<ConfirmResu
   if (booking.status === "pending_payment" || booking.status === "expired") {
     try {
       await prisma.$transaction(async (tx) => {
+        await lockCalendar(tx); // reviving an expired hold re-checks the calendar
         // Recording the payment first means a duplicate webhook fails here
         // (stripe_id is unique) and changes nothing.
         await tx.payment.create({
