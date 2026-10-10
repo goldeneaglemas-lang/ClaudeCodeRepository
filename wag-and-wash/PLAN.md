@@ -4,7 +4,7 @@ Wag & Wash is a dog grooming business run by Jess. Customers book an appointment
 online and pay a **$25 deposit** to hold it. Jess runs the day from an owner
 dashboard. Customers get a text reminder before their appointment.
 
-> Status: **step 1 (skeleton) done.** Next: step 2 (availability). Jess's answers
+> Status: **steps 1–2 done** (skeleton, availability). Next: step 3 (booking + deposit). Jess's answers
 > are in §8; a few smaller questions remain, with defaults in use.
 
 ---
@@ -126,7 +126,7 @@ Booking
 - `Service`: name, duration_min, price_cents, active
 - `BusinessHours`: weekday, open_time, close_time
 - `TimeOff`: starts_at, ends_at, reason (blocks slots)
-- `Settings`: one row of shop-wide rules (timezone, $25 deposit, 10-day cancellation, 15-min gap, hold and reminder timing)
+- `Settings`: one row of shop-wide rules (timezone, $25 deposit, 10-day cancellation, 15-min gap, hold and reminder timing, 2h minimum notice, 60-day booking window)
 - `Owner`: email, password_hash, 2FA secret
 - `Payment`: booking_id, type (deposit/refund), amount_cents, stripe_id, status. This is an audit trail.
 - `SmsLog`: booking_id, kind (confirmation/reminder), twilio_sid, status
@@ -140,10 +140,19 @@ constraint. Each booking has exactly one dog, so `dog_id` is a single column.
 
 ## 5. Back-end flow
 
-### 5.1 Finding free slots: `GET /api/slots?service=…&date=…`
+### 5.1 Finding free slots: `GET /api/slots?serviceId=…&from=YYYY-MM-DD&to=YYYY-MM-DD`
 Free slots = business hours − time off − existing `confirmed` bookings −
-unexpired `pending_payment` holds. Slots are generated on a 15-minute grid and
-sized to the service's length.
+unexpired `pending_payment` holds. Slots are generated on a 15-minute grid from
+opening time and sized to the service's length. The calendar asks for a month
+at a time (up to 62 days per request).
+
+Rules, as built:
+- The appointment must **finish by closing time**; the cleanup gap may run past it.
+- The new appointment **plus its 15-minute gap** must not overlap another booking plus its gap (the same rule as the database constraint).
+- Time off only has to avoid the appointment itself, so Jess can clean up during a break.
+- At least **2 hours' notice** (`min_notice_hours`), and no more than **60 days ahead** (`booking_window_days`). Both are settings Jess can change.
+- Dates and times use the **shop's timezone**, wherever the server or customer is, including on daylight-saving days.
+- A hold whose 15 minutes have run out shows as free straight away. Step 3 must mark such holds expired before inserting, because the database still counts them until the clean-up job runs.
 
 ### 5.2 Booking and paying the deposit: `POST /api/bookings`
 1. **Validate** the input: the service exists, the slot is in the future and within hours, and the dog belongs to the customer.
@@ -175,7 +184,7 @@ sized to the service's length.
 | Method | Path | Who |
 |---|---|---|
 | POST | `/api/auth/otp/send`, `/api/auth/otp/verify` | customer |
-| GET | `/api/services`, `/api/slots` | public |
+| GET | `/api/services`, `/api/slots?serviceId&from&to` | public |
 | GET/POST/PATCH | `/api/dogs` | customer |
 | POST | `/api/bookings` | customer |
 | GET | `/api/bookings/mine` | customer |
@@ -199,7 +208,7 @@ sized to the service's length.
 
 ## 7. Build order (milestones)
 1. ✅ **Skeleton**: Next.js app, Prisma schema, migrations, seed services and hours.
-2. **Availability**: the slots endpoint and the booking calendar UI, with tests for overlaps, time off and edges of opening hours.
+2. ✅ **Availability**: the slots endpoint and the booking calendar UI, with tests for overlaps, time off and edges of opening hours.
 3. **Booking + deposit**: hold the slot, Stripe Checkout, webhook confirmation, the expire-holds cron.
 4. **Customer auth + My bookings**: OTP login, list, cancel with refund.
 5. **Owner dashboard**: today view, calendar, time off, settings, walk-ins.

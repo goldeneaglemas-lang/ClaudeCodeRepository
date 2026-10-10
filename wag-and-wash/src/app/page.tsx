@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatCents } from "@/lib/money";
 
@@ -37,8 +38,9 @@ export default async function HomePage() {
         {cancellationDays} or more days ahead for a full refund of the deposit.
       </p>
 
-      {/* The booking page arrives in step 2 of PLAN.md. */}
-      <span className="button button-disabled">Online booking coming soon</span>
+      <Link className="button" href="/book">
+        Book an appointment
+      </Link>
     </main>
   );
 }

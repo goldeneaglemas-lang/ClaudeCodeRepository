@@ -4,7 +4,8 @@ Online booking for Wag & Wash, Jess's dog grooming business. Customers book and
 pay a $25 deposit; Jess runs the day from an owner dashboard. The full design
 is in [PLAN.md](PLAN.md).
 
-**Status:** step 1 of 7 (skeleton) is done: app, database, placeholder data.
+**Status:** steps 1–2 of 7 are done: app, database, placeholder data, and the
+booking page up to choosing a time (`/book`). Paying the deposit comes next.
 
 ## Run it locally
 
@@ -34,7 +35,12 @@ npm run build
 | `prisma/migrations/` | SQL migrations, including the hand-written **no double-booking** rule |
 | `prisma/seed.ts` | Placeholder services and hours (Tue–Sat 9–5) until Jess sends the real ones |
 | `src/app/` | Next.js pages |
-| `src/lib/` | Shared code (database client, money helpers) |
+| `src/app/book/` | Booking page: service → calendar → time → summary |
+| `src/app/api/` | `GET /api/services`, `GET /api/slots` |
+| `src/lib/availability.ts` | The slot rules (hours, bookings + cleanup gap, time off, notice, window) |
+| `src/lib/time.ts` | Shop-timezone date helpers, daylight-saving safe |
+| `src/lib/policy.ts` | The 10-day refund rule |
+| `src/lib/` (other) | Database client, money helpers, slot loading |
 | `tests/` | Tests, including 10 customers booking the same slot at once |
 
 ## How double-booking is prevented

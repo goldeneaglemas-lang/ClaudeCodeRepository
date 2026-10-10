@@ -30,7 +30,10 @@ export default async function setup() {
   await admin.$executeRawUnsafe(`CREATE DATABASE "${dbName}"`);
 
   const url = withDatabase(serverUrl, dbName);
-  process.env.TEST_DATABASE_URL = url; // read by tests/helpers.ts in the test workers
+  // Test workers inherit these, so the app code under test (src/lib/prisma.ts)
+  // talks to this run's database too.
+  process.env.TEST_DATABASE_URL = url;
+  process.env.DATABASE_URL = url;
   const env = { ...process.env, DATABASE_URL: url };
   execSync("npx prisma migrate deploy", { stdio: "ignore", env });
   execSync("npx prisma db seed", { stdio: "ignore", env });

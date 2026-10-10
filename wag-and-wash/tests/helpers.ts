@@ -1,7 +1,9 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 
 // TEST_DATABASE_URL is set by tests/global-setup.ts to this run's own database.
-if (!process.env.TEST_DATABASE_URL) throw new Error("Run the tests with `npm test`.");
+if (!process.env.TEST_DATABASE_URL || process.env.DATABASE_URL !== process.env.TEST_DATABASE_URL) {
+  throw new Error("Run the tests with `npm test`.");
+}
 
 export const db = new PrismaClient({ datasources: { db: { url: process.env.TEST_DATABASE_URL } } });
 

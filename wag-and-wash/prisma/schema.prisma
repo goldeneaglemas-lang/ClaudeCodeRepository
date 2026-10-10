@@ -162,6 +162,8 @@ model Settings {
   slotStepMin         Int      @default(15) @map("slot_step_min")
   holdMinutes         Int      @default(15) @map("hold_minutes")
   reminderHoursBefore Int      @default(24) @map("reminder_hours_before")
+  minNoticeHours      Int      @default(2) @map("min_notice_hours") // earliest a slot can be booked, from now
+  bookingWindowDays   Int      @default(60) @map("booking_window_days") // how far ahead customers can book
   updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("settings")
