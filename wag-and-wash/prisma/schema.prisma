@@ -1,0 +1,208 @@
+// Wag & Wash database schema. See PLAN.md §4.
+// Tables use snake_case names so the raw SQL constraints in the migrations stay readable.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DogSize {
+  small
+  medium
+  large
+  xl
+}
+
+enum BookingStatus {
+  pending_payment
+  confirmed
+  completed
+  cancelled
+  no_show
+  expired
+}
+
+enum BookingSource {
+  online
+  owner
+}
+
+enum PaymentType {
+  deposit
+  refund
+}
+
+enum PaymentStatus {
+  pending
+  succeeded
+  failed
+}
+
+enum SmsKind {
+  confirmation
+  reminder
+  refund_deadline
+  cancellation
+}
+
+model Customer {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  phone     String    @unique // E.164, e.g. +15551234567
+  email     String?
+  smsOptIn  Boolean   @default(true) @map("sms_opt_in")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  dogs      Dog[]
+  bookings  Booking[]
+
+  @@map("customers")
+}
+
+model Dog {
+  id         String    @id @default(uuid()) @db.Uuid
+  customerId String    @map("customer_id") @db.Uuid
+  name       String
+  breed      String?
+  size       DogSize // a note for Jess only; it does not change price or length
+  notes      String? // temperament, allergies, vet info
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  bookings   Booking[]
+
+  @@index([customerId])
+  @@map("dogs")
+}
+
+model Service {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique
+  description String?
+  durationMin Int       @map("duration_min")
+  priceCents  Int       @map("price_cents")
+  active      Boolean   @default(true)
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  bookings    Booking[]
+
+  @@map("services")
+}
+
+model Booking {
+  id                    String        @id @default(uuid()) @db.Uuid
+  customerId            String        @map("customer_id") @db.Uuid
+  dogId                 String        @map("dog_id") @db.Uuid // one dog per booking
+  serviceId             String        @map("service_id") @db.Uuid
+  startsAt              DateTime      @map("starts_at") @db.Timestamptz
+  endsAt                DateTime      @map("ends_at") @db.Timestamptz
+  // endsAt + Jess's cleanup gap. The no-overlap rule uses this, so the gap is protected too.
+  blockedUntil          DateTime      @map("blocked_until") @db.Timestamptz
+  status                BookingStatus @default(pending_payment)
+  holdExpiresAt         DateTime?     @map("hold_expires_at") @db.Timestamptz
+  depositCents          Int           @map("deposit_cents")
+  // Service price copied in at booking time. Balance due on the day = priceCents - depositCents.
+  priceCents            Int           @map("price_cents")
+  stripeCheckoutId      String?       @unique @map("stripe_checkout_id")
+  stripePaymentIntentId String?       @map("stripe_payment_intent_id")
+  reminderSentAt        DateTime?     @map("reminder_sent_at") @db.Timestamptz
+  refundDeadlineSentAt  DateTime?     @map("refund_deadline_sent_at") @db.Timestamptz
+  cancelledAt           DateTime?     @map("cancelled_at") @db.Timestamptz
+  source                BookingSource @default(online)
+  notes                 String?
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  customer              Customer      @relation(fields: [customerId], references: [id])
+  dog                   Dog           @relation(fields: [dogId], references: [id])
+  service               Service       @relation(fields: [serviceId], references: [id])
+  payments              Payment[]
+  smsLogs               SmsLog[]
+
+  // The no-double-booking rule lives in the migration SQL (EXCLUDE constraint),
+  // because Prisma can't express it here.
+  @@index([startsAt])
+  @@index([customerId])
+  @@index([status])
+  @@map("bookings")
+}
+
+// Weekly opening hours. One row per open weekday; a missing weekday means closed.
+model BusinessHours {
+  id        String @id @default(uuid()) @db.Uuid
+  weekday   Int    @unique // 0 = Sunday ... 6 = Saturday
+  openTime  String @map("open_time") // "09:00", shop local time
+  closeTime String @map("close_time") // "17:00", shop local time
+
+  @@map("business_hours")
+}
+
+model TimeOff {
+  id        String   @id @default(uuid()) @db.Uuid
+  startsAt  DateTime @map("starts_at") @db.Timestamptz
+  endsAt    DateTime @map("ends_at") @db.Timestamptz
+  reason    String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([startsAt])
+  @@map("time_off")
+}
+
+// Single row (id = 1) of shop-wide settings Jess can change from the dashboard.
+model Settings {
+  id                  Int      @id @default(1)
+  timezone            String   @default("America/New_York")
+  depositCents        Int      @default(2500) @map("deposit_cents")
+  cancellationDays    Int      @default(10) @map("cancellation_days")
+  bufferMin           Int      @default(15) @map("buffer_min") // cleanup gap between appointments
+  slotStepMin         Int      @default(15) @map("slot_step_min")
+  holdMinutes         Int      @default(15) @map("hold_minutes")
+  reminderHoursBefore Int      @default(24) @map("reminder_hours_before")
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("settings")
+}
+
+model Owner {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  name         String
+  passwordHash String   @map("password_hash")
+  totpSecret   String?  @map("totp_secret")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("owners")
+}
+
+model Payment {
+  id          String        @id @default(uuid()) @db.Uuid
+  bookingId   String        @map("booking_id") @db.Uuid
+  type        PaymentType
+  amountCents Int           @map("amount_cents")
+  stripeId    String?       @unique @map("stripe_id")
+  status      PaymentStatus @default(pending)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  booking     Booking       @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+  @@map("payments")
+}
+
+model SmsLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  bookingId String?  @map("booking_id") @db.Uuid
+  toPhone   String   @map("to_phone")
+  kind      SmsKind
+  body      String
+  twilioSid String?  @unique @map("twilio_sid")
+  status    String   @default("queued")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  booking   Booking? @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+  @@map("sms_logs")
+}

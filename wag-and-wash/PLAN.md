@@ -4,8 +4,8 @@ Wag & Wash is a dog grooming business run by Jess. Customers book an appointment
 online and pay a **$25 deposit** to hold it. Jess runs the day from an owner
 dashboard. Customers get a text reminder before their appointment.
 
-> Status: plan only. No code yet. Jess's answers to the main questions are in §8;
-> a few smaller questions remain.
+> Status: **step 1 (skeleton) done.** Next: step 2 (availability). Jess's answers
+> are in §8; a few smaller questions remain, with defaults in use.
 
 ---
 
@@ -115,8 +115,10 @@ Booking
   source             enum(online, owner)  -- owner = walk-in or phone booking
   created_at, updated_at
 
-  -- Blocks double-booking at the database level (Postgres btree_gist):
-  EXCLUDE USING gist (tstzrange(starts_at, ends_at) WITH &&)
+  blocked_until      timestamptz       -- ends_at + Jess's cleanup gap
+
+  -- Blocks double-booking (and protects the cleanup gap) at the database level:
+  EXCLUDE USING gist (tstzrange(starts_at, blocked_until) WITH &&)
     WHERE (status IN ('pending_payment','confirmed'))
 ```
 
@@ -124,6 +126,7 @@ Booking
 - `Service`: name, duration_min, price_cents, active
 - `BusinessHours`: weekday, open_time, close_time
 - `TimeOff`: starts_at, ends_at, reason (blocks slots)
+- `Settings`: one row of shop-wide rules (timezone, $25 deposit, 10-day cancellation, 15-min gap, hold and reminder timing)
 - `Owner`: email, password_hash, 2FA secret
 - `Payment`: booking_id, type (deposit/refund), amount_cents, stripe_id, status. This is an audit trail.
 - `SmsLog`: booking_id, kind (confirmation/reminder), twilio_sid, status
@@ -195,7 +198,7 @@ sized to the service's length.
 ---
 
 ## 7. Build order (milestones)
-1. **Skeleton**: Next.js app, Prisma schema, migrations, seed services and hours.
+1. ✅ **Skeleton**: Next.js app, Prisma schema, migrations, seed services and hours.
 2. **Availability**: the slots endpoint and the booking calendar UI, with tests for overlaps, time off and edges of opening hours.
 3. **Booking + deposit**: hold the slot, Stripe Checkout, webhook confirmation, the expire-holds cron.
 4. **Customer auth + My bookings**: OTP login, list, cancel with refund.
