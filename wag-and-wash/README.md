@@ -4,8 +4,9 @@ Online booking for Wag & Wash, Jess's dog grooming business. Customers book and
 pay a $25 deposit; Jess runs the day from an owner dashboard. The full design
 is in [PLAN.md](PLAN.md).
 
-**Status:** steps 1–2 of 7 are done: app, database, placeholder data, and the
-booking page up to choosing a time (`/book`). Paying the deposit comes next.
+**Status:** steps 1–3 of 7 are done. Customers can book a time and pay the
+$25 deposit; the booking is confirmed once payment arrives. Next: phone
+sign-in and "My bookings".
 
 ## Run it locally
 
@@ -18,6 +19,19 @@ npm run db:migrate          # create the tables
 npm run db:seed             # placeholder services, hours and settings
 npm run dev                 # http://localhost:3000
 ```
+
+## Payments without a Stripe account
+
+If `STRIPE_SECRET_KEY` is empty, `npm run dev` uses a built-in **test checkout
+page** with "Pay" and "Cancel" buttons; no money moves. It runs the same
+confirm/refund code as Stripe. It's switched off in production (`npm start`),
+which refuses to take bookings without a Stripe key.
+
+To use real Stripe (test mode):
+1. Create a free account at stripe.com and copy the test secret key into `STRIPE_SECRET_KEY`.
+2. Install the Stripe CLI and run `stripe listen --forward-to localhost:3000/api/webhooks/stripe`.
+3. Copy the `whsec_…` secret it prints into `STRIPE_WEBHOOK_SECRET`, restart `npm run dev`.
+4. Pay with card `4242 4242 4242 4242`, any future date, any CVC.
 
 ## Checks
 
@@ -36,10 +50,13 @@ npm run build
 | `prisma/seed.ts` | Placeholder services and hours (Tue–Sat 9–5) until Jess sends the real ones |
 | `src/app/` | Next.js pages |
 | `src/app/book/` | Booking page: service → calendar → time → summary |
-| `src/app/api/` | `GET /api/services`, `GET /api/slots` |
+| `src/app/api/` | Services, slots, bookings, Stripe webhook, hold clean-up job |
 | `src/lib/availability.ts` | The slot rules (hours, bookings + cleanup gap, time off, notice, window) |
 | `src/lib/time.ts` | Shop-timezone date helpers, daylight-saving safe |
 | `src/lib/policy.ts` | The 10-day refund rule |
+| `src/lib/bookings.ts` | Hold a slot, confirm a paid deposit, refund when needed, release holds |
+| `src/lib/payments/` | Stripe, plus the test stand-in used when there's no Stripe key |
+| `src/app/api/webhooks/stripe/` | Stripe tells us here when a deposit is paid |
 | `src/lib/` (other) | Database client, money helpers, slot loading |
 | `tests/` | Tests, including 10 customers booking the same slot at once |
 

@@ -4,7 +4,8 @@ Wag & Wash is a dog grooming business run by Jess. Customers book an appointment
 online and pay a **$25 deposit** to hold it. Jess runs the day from an owner
 dashboard. Customers get a text reminder before their appointment.
 
-> Status: **steps 1–2 done** (skeleton, availability). Next: step 3 (booking + deposit). Jess's answers
+> Status: **steps 1–3 done** (skeleton, availability, booking + deposit). Next: step 4
+> (phone sign-in + My bookings). Jess's answers
 > are in §8; a few smaller questions remain, with defaults in use.
 
 ---
@@ -126,7 +127,7 @@ Booking
 - `Service`: name, duration_min, price_cents, active
 - `BusinessHours`: weekday, open_time, close_time
 - `TimeOff`: starts_at, ends_at, reason (blocks slots)
-- `Settings`: one row of shop-wide rules (timezone, $25 deposit, 10-day cancellation, 15-min gap, hold and reminder timing, 2h minimum notice, 60-day booking window)
+- `Settings`: one row of shop-wide rules (timezone, $25 deposit, 10-day cancellation, 15-min gap, 30-min hold, reminder timing, 2h minimum notice, 60-day booking window)
 - `Owner`: email, password_hash, 2FA secret
 - `Payment`: booking_id, type (deposit/refund), amount_cents, stripe_id, status. This is an audit trail.
 - `SmsLog`: booking_id, kind (confirmation/reminder), twilio_sid, status
@@ -156,7 +157,10 @@ Rules, as built:
 
 ### 5.2 Booking and paying the deposit: `POST /api/bookings`
 1. **Validate** the input: the service exists, the slot is in the future and within hours, and the dog belongs to the customer.
-2. **Hold the slot**: insert the Booking with `status = pending_payment` and `hold_expires_at = now + 15 min`.
+2. **Hold the slot**: insert the Booking with `status = pending_payment` and `hold_expires_at = now + 32 min`.
+   (Stripe's checkout page must stay open for at least 30 minutes, so the hold is 30 minutes plus a 2-minute
+   margin, and the checkout page closes 1 minute before the hold ends.) Stale holds are cleared first, in the
+   same transaction.
    The exclusion constraint makes this **atomic**. If two people click the same slot at once, one insert fails, and that person gets `409 Slot taken`.
 3. **Create a Stripe Checkout session** for $25 with `metadata.booking_id`, then return its URL.
 4. The customer pays on Stripe's hosted page.
@@ -164,11 +168,17 @@ Rules, as built:
 ### 5.3 Confirming: `POST /api/webhooks/stripe`
 - Verify the Stripe signature.
 - On `checkout.session.completed`: set the booking to `confirmed`, record the Payment, and send the confirmation SMS.
-- The handler is **idempotent**, so a repeated webhook does nothing.
-- Edge case: the payment arrives after the hold expired and someone else has taken the slot. Refund the deposit automatically and text the customer.
+- The handler is **idempotent**, so a repeated webhook does nothing, even when copies arrive at the same moment (the payment's Stripe id is unique).
+- The amount and currency must match the booking's deposit, or the booking isn't confirmed.
+- Payment after the hold expired: confirm if the slot is still free; if someone else has taken it, refund automatically (text the customer: step 6).
+- Payment for a cancelled booking, or a second payment for a confirmed one: refund automatically.
+- `checkout.session.expired`: free the slot.
+- If the customer backs out of the payment page, the slot is freed at once and the checkout page is closed.
+- Without `STRIPE_SECRET_KEY`, a built-in **test checkout page** (`/dev/checkout/…`) stands in for Stripe and calls the same code. It is switched off in production.
 
 ### 5.4 Clearing holds (cron, every 5 min)
 - Set `pending_payment` bookings older than `hold_expires_at` to `expired`. This frees the slot.
+- `GET /api/cron/expire-holds` with `Authorization: Bearer $CRON_SECRET`. Scheduled in `vercel.json`. (Vercel's free plan only runs crons daily; that's fine, because booking clears stale holds itself.)
 
 ### 5.5 SMS reminder (cron, every 5 min)
 - Find `confirmed` bookings where `starts_at` is within 24h (configurable), `reminder_sent_at IS NULL` and the customer is opted in.
@@ -186,7 +196,9 @@ Rules, as built:
 | POST | `/api/auth/otp/send`, `/api/auth/otp/verify` | customer |
 | GET | `/api/services`, `/api/slots?serviceId&from&to` | public |
 | GET/POST/PATCH | `/api/dogs` | customer |
-| POST | `/api/bookings` | customer |
+| POST | `/api/bookings` | customer (public until step 4 adds phone sign-in) |
+| GET | `/api/bookings/:id` (status only) | customer |
+| POST | `/api/bookings/:id/release` | customer |
 | GET | `/api/bookings/mine` | customer |
 | POST | `/api/bookings/:id/cancel` | customer / owner |
 | GET/PATCH | `/api/admin/bookings`, `/api/admin/customers`, `/api/admin/settings`, `/api/admin/time-off` | owner |
@@ -209,7 +221,7 @@ Rules, as built:
 ## 7. Build order (milestones)
 1. ✅ **Skeleton**: Next.js app, Prisma schema, migrations, seed services and hours.
 2. ✅ **Availability**: the slots endpoint and the booking calendar UI, with tests for overlaps, time off and edges of opening hours.
-3. **Booking + deposit**: hold the slot, Stripe Checkout, webhook confirmation, the expire-holds cron.
+3. ✅ **Booking + deposit**: hold the slot, Stripe Checkout, webhook confirmation, the expire-holds cron.
 4. **Customer auth + My bookings**: OTP login, list, cancel with refund.
 5. **Owner dashboard**: today view, calendar, time off, settings, walk-ins.
 6. **SMS**: confirmation, reminder cron, STOP handling.

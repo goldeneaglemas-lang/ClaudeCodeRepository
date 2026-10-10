@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { balanceDueCents, formatCents } from "@/lib/money";
 import { isRefundable, refundDeadline } from "@/lib/policy";
 import { addDays, formatDateLong, formatTime, weekdayOf } from "@/lib/time";
+import DetailsForm from "./DetailsForm";
 
 type Service = { id: string; name: string; description: string | null; durationMin: number; priceCents: number };
 type Slot = { startsAt: string; label: string };
@@ -44,6 +45,7 @@ export default function BookingFlow({ services, timezone, today, lastDate, depos
   const [date, setDate] = useState<string | null>(null);
   const [slot, setSlot] = useState<Slot | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
   const timesRef = useRef<HTMLElement>(null);
 
   const service = services.find((s) => s.id === serviceId) ?? null;
@@ -90,6 +92,7 @@ export default function BookingFlow({ services, timezone, today, lastDate, depos
   function chooseDate(d: string) {
     setDate(d);
     setSlot(null);
+    setNotice(null);
     // On phones the times are below the calendar; bring them into view.
     requestAnimationFrame(() => timesRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
   }
@@ -189,6 +192,11 @@ export default function BookingFlow({ services, timezone, today, lastDate, depos
       {service && date && (
         <section aria-labelledby="step-time" ref={timesRef}>
           <h2 id="step-time" className="step">3. Pick a time on {formatDateLong(new Date(`${date}T12:00:00Z`), "UTC")}</h2>
+          {notice && (
+            <p className="error" role="alert">
+              {notice}
+            </p>
+          )}
           {times.length === 0 ? (
             <p className="muted">No free times left on this day.</p>
           ) : (
@@ -200,7 +208,10 @@ export default function BookingFlow({ services, timezone, today, lastDate, depos
                   role="radio"
                   aria-checked={slot?.startsAt === t.startsAt}
                   className="time choice"
-                  onClick={() => setSlot(t)}
+                  onClick={() => {
+                    setSlot(t);
+                    setNotice(null);
+                  }}
                 >
                   {t.label}
                 </button>
@@ -217,14 +228,28 @@ export default function BookingFlow({ services, timezone, today, lastDate, depos
           timezone={timezone}
           depositCents={depositCents}
           cancellationDays={cancellationDays}
+          onSlotGone={(message) => {
+            // Someone else got there first: show fresh times and say why.
+            setNotice(message);
+            setSlot(null);
+            setReloadKey((k) => k + 1);
+            requestAnimationFrame(() => timesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+          }}
         />
       )}
     </div>
   );
 }
 
-function Summary(props: { service: Service; startsAt: Date; timezone: string; depositCents: number; cancellationDays: number }) {
-  const { service, startsAt, timezone, depositCents, cancellationDays } = props;
+function Summary(props: {
+  service: Service;
+  startsAt: Date;
+  timezone: string;
+  depositCents: number;
+  cancellationDays: number;
+  onSlotGone: (message: string) => void;
+}) {
+  const { service, startsAt, timezone, depositCents, cancellationDays, onSlotGone } = props;
   const endsAt = new Date(startsAt.getTime() + service.durationMin * 60_000);
   const deadline = refundDeadline(startsAt, cancellationDays);
   const refundable = isRefundable(startsAt, new Date(), cancellationDays);
@@ -256,10 +281,14 @@ function Summary(props: { service: Service; startsAt: Date; timezone: string; de
           refunded if you cancel.
         </p>
       )}
-      {/* Your details, your dog and the deposit payment arrive in the next build steps (PLAN.md §7). */}
-      <button type="button" className="button" disabled>
-        Continue: your details (coming soon)
-      </button>
+      <DetailsForm
+        key={startsAt.toISOString()}
+        serviceId={service.id}
+        startsAt={startsAt.toISOString()}
+        depositCents={depositCents}
+        refundable={refundable}
+        onSlotGone={onSlotGone}
+      />
     </section>
   );
 }

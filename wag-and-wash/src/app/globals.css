@@ -117,3 +117,32 @@ button.button:disabled { opacity: 0.6; cursor: default; }
   .note.warning { border-color: #e0a54a; }
   .error { color: #f2b8b5; }
 }
+
+/* Details form */
+.details { display: grid; gap: 16px; margin-top: 8px; }
+.details fieldset { border: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.details legend { font-weight: 700; margin-bottom: 4px; }
+.details label { display: grid; gap: 4px; font-weight: 600; }
+.details label .muted { font-weight: 400; }
+.details input, .details select, .details textarea {
+  font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; width: 100%;
+}
+.details input:focus-visible, .details select:focus-visible, .details textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.details .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 400; }
+.details .check input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
+
+/* Payment pages */
+.test-banner { background: #fff3cd; color: #5c4400; border-radius: 8px; padding: 10px 12px; font-size: 0.9rem; }
+.amount { font-size: 2.5rem; font-weight: 700; margin: 8px 0 24px; }
+.actions { display: grid; gap: 12px; justify-items: center; }
+.link { color: var(--accent); }
+.spinner::after { content: " …"; animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity: 0.2; } }
+main > .button { margin-top: 16px; }
+main .summary { margin: 16px 0; }
+
+@media (prefers-color-scheme: dark) {
+  .test-banner { background: #4a3b10; color: #ffe7a3; }
+}
+main a:not(.button) { color: var(--accent); }

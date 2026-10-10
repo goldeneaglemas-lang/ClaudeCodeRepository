@@ -160,7 +160,7 @@ model Settings {
   cancellationDays    Int      @default(10) @map("cancellation_days")
   bufferMin           Int      @default(15) @map("buffer_min") // cleanup gap between appointments
   slotStepMin         Int      @default(15) @map("slot_step_min")
-  holdMinutes         Int      @default(15) @map("hold_minutes")
+  holdMinutes         Int      @default(30) @map("hold_minutes") // Stripe checkout pages last at least 30 min
   reminderHoursBefore Int      @default(24) @map("reminder_hours_before")
   minNoticeHours      Int      @default(2) @map("min_notice_hours") // earliest a slot can be booked, from now
   bookingWindowDays   Int      @default(60) @map("booking_window_days") // how far ahead customers can book

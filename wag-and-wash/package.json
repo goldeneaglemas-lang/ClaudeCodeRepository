@@ -21,7 +21,9 @@
     "@prisma/client": "6.19.3",
     "next": "15.5.27",
     "react": "19.1.1",
-    "react-dom": "19.1.1"
+    "react-dom": "19.1.1",
+    "stripe": "22.6.2",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/node": "22.18.0",
