@@ -4,8 +4,8 @@ Wag & Wash is a dog grooming business run by Jess. Customers book an appointment
 online and pay a **$25 deposit** to hold it. Jess runs the day from an owner
 dashboard. Customers get a text reminder before their appointment.
 
-> Status: plan only. No code yet. The open questions at the bottom need answers
-> before building.
+> Status: plan only. No code yet. Jess's answers to the main questions are in §8;
+> a few smaller questions remain.
 
 ---
 
@@ -19,7 +19,9 @@ dashboard. Customers get a text reminder before their appointment.
 - An SMS reminder is sent before each appointment.
 
 **Out of scope (v1)**
-- More than one groomer or location (the design leaves room for this; see §4).
+- More than one groomer or location. Jess is the only groomer.
+- More than one dog per booking. A customer with two dogs makes two bookings.
+- Prices or lengths that change with dog size.
 - Taking the full balance online. Jess collects the rest in person.
 - Loyalty points, packages, gift cards, a native mobile app.
 
@@ -42,18 +44,22 @@ dashboard. Customers get a text reminder before their appointment.
 ## 3. Screens
 
 ### 3.1 Booking page (`/book`), for customers
-1. **Pick a service**: Bath, Full Groom, Nail Trim, etc. Each shows its price, length and dog-size options.
+1. **Pick a service**: Bath, Full Groom, Nail Trim, etc. Each shows its price and length. Price and length are the same for every dog size.
 2. **Pick a date and time**: a calendar showing only free slots (from `GET /api/slots`).
 3. **Your details**: phone number (checked with a code), name, email (optional).
 4. **Your dog(s)**: choose a saved dog or add one (name, breed, size, notes such as "nervous of dryers").
-5. **Review and pay the deposit**: summary, cancellation policy and a $25 deposit button. This goes to Stripe Checkout.
+5. **Review and pay the deposit**: summary (price, $25 deposit, balance due on the day = price − $25), the
+   10-day cancellation policy and a $25 deposit button. This goes to Stripe Checkout.
+   If the appointment is **less than 10 days away**, a clear notice says the deposit is non-refundable from the start,
+   and the customer must tick a box to accept that.
 6. **Confirmation page**: "You're booked!" plus an SMS confirmation.
 
 If a slot is taken while the customer is paying, they see a clear message and are sent back to step 2 (see §5).
 
 ### 3.2 My bookings (`/my-bookings`), for signed-in customers
 - Upcoming bookings: date, time, service, dog, deposit paid, balance due.
-- **Cancel** button. The refund follows the policy (open question 1).
+- **Cancel** button. If the appointment is 10 or more days away, the deposit is refunded. If it's closer, the button warns that the deposit will be kept.
+- Each booking shows the last date it can be cancelled for a refund.
 - Past bookings, and a **Book again** shortcut.
 - Manage dogs (edit or add) and SMS reminder preferences.
 
@@ -102,6 +108,7 @@ Booking
   hold_expires_at    timestamptz NULL  -- for pending_payment only
   deposit_cents      int  default 2500
   price_cents        int               -- service price, copied in at booking time
+                                       -- balance due on the day = price_cents - deposit_cents
   stripe_checkout_id text NULL
   stripe_payment_intent_id text NULL
   reminder_sent_at   timestamptz NULL
@@ -121,8 +128,10 @@ Booking
 - `Payment`: booking_id, type (deposit/refund), amount_cents, stripe_id, status. This is an audit trail.
 - `SmsLog`: booking_id, kind (confirmation/reminder), twilio_sid, status
 
-*If Jess ever hires a second groomer:* add a `Groomer` table, put `groomer_id` on
-Booking, and add `groomer_id WITH =` to the exclusion constraint.
+Because Jess is the only groomer, there is one calendar, and the exclusion
+constraint covers every booking. *If she ever hires a second groomer:* add a
+`Groomer` table, put `groomer_id` on Booking, and add `groomer_id WITH =` to the
+constraint. Each booking has exactly one dog, so `dog_id` is a single column.
 
 ---
 
@@ -156,7 +165,7 @@ sized to the service's length.
 - Inbound Twilio webhook: `STOP` opts the customer out. `C` could start a cancellation (v1.1).
 
 ### 5.6 Cancelling: `POST /api/bookings/:id/cancel`
-- Customer: refund the deposit through Stripe if they cancel outside the cancellation window; otherwise keep it (per policy).
+- Customer: if `starts_at − now ≥ 10 days`, refund the $25 deposit through Stripe. Otherwise the deposit is kept. The check runs on the server, at the moment of cancelling.
 - Jess: chooses *refund* or *keep* each time.
 
 ### 5.7 API summary
@@ -194,20 +203,28 @@ sized to the service's length.
 6. **SMS**: confirmation, reminder cron, STOP handling.
 7. **Polish and launch**: mobile layout, error states, Stripe/Twilio live keys, a test day with Jess.
 
-**Testing:** unit tests for slot maths and the refund policy. Integration tests that
+**Testing:** unit tests for slot maths and the 10-day refund rule (including exactly 10 days, and timezone/daylight-saving edges). Integration tests that
 fire two concurrent bookings at the same slot (exactly one may succeed). Stripe CLI
 for webhook tests. Twilio test credentials.
 
 ---
 
-## 8. Open questions for Jess
-1. **Cancellation policy**: how many hours' notice gets the deposit back? 24h? 48h?
-2. **No-shows**: is the deposit simply kept?
-3. **Is the deposit taken off the final price**, or is it an extra fee?
-4. **Services and lengths**: the full list, and does length or price depend on dog size?
-5. **One dog per booking**, or several dogs in one appointment?
-6. **Opening hours, timezone**, and the gap needed between appointments (cleanup time)?
-7. **Reminder timing**: 24h before? A second one 2h before?
-8. **Just Jess**, or other groomers soon?
-9. Does she already have **Stripe / Twilio** accounts and a business phone number to text from?
-10. Domain name and branding (logo, colours)?
+## 8. Decisions and remaining questions
+
+**Decided by Jess**
+| Question | Decision | Effect on the plan |
+|---|---|---|
+| Cancellation | **10 days' notice** gets the deposit back | Refund rule in §5.6. Warning at checkout for bookings less than 10 days away. |
+| Deposit | **Taken off the final price** | Balance due on the day = price − $25, shown everywhere. |
+| Prices and lengths | **Same for every dog size** | No size pricing. Dog size is kept only as a note for Jess. |
+| Dogs per booking | **One dog** | One `dog_id` per booking. Two dogs = two bookings. |
+| Groomers | **Only Jess** | One calendar. No groomer table in v1. |
+
+**Still open (sensible defaults in brackets, used if there's no answer)**
+1. **No-shows**: is the deposit kept? *(Yes.)*
+2. **Late cancellation by Jess** (she's ill, etc.): always refunded? *(Yes, always.)*
+3. **Services**: the full list with prices and lengths. *(Placeholder services seeded until she sends them.)*
+4. **Opening hours, timezone**, and cleanup time between appointments. *(Tue–Sat 9am–5pm, 15-minute gap.)*
+5. **Reminders**: 24h before? Given the 10-day rule, also a text **11 days before** saying "last day to cancel for a refund is tomorrow"? *(Both.)*
+6. Existing **Stripe / Twilio** accounts and a phone number to text from. *(We set up new ones.)*
+7. Domain name and branding. *(Simple placeholder branding.)*
